@@ -54,7 +54,7 @@ See [validation evidence](VALIDATION.md) for executed test counts, container che
 
 No deployment, purchase, or live-model call was made during this review. Existing six-call live evidence was inspected and reused as historical evidence, not rerun or reclassified as a result for the changed verification prompts.
 
-## Proposed targeted live acceptance suite — not executed
+## Proposed targeted live acceptance suite — subsequently executed (see follow-up)
 
 Twelve calls, five short conversations, synthetic fixtures only. Use the existing model/prompt configuration and a fixed controller clock; save sanitized outcomes and latency/token usage. Obtain approval for the paid run before execution.
 

@@ -40,7 +40,7 @@ Official key setup: [OpenAI](https://platform.openai.com/api-keys), [Anthropic](
 docker compose up --build
 ```
 
-Compose reads `.env`, binds only to local port 8000, and persists sessions in a named volume. Keep `DATA_DIR=/app/data` inside the container. The multi-stage build excludes `.env` and runs the backend as a nonroot user. The Linux/ARM64 image and Compose runtime were verified on Docker Desktop, including nine browser checks and encrypted session recovery after container restart. See [current V2 evidence](docs/VALIDATION.md#v2-validation--october-16-2026).
+Compose reads `.env`, binds only to local port 8000, and persists sessions in a named volume. Keep `DATA_DIR=/app/data` inside the container. The multi-stage build excludes `.env` and runs the backend as a nonroot user. The Linux/ARM64 image and Compose runtime were verified on Docker Desktop, including eleven browser checks and encrypted session/model-selection recovery after container restart. See [current V2 evidence](docs/VALIDATION.md#v2-validation--october-16-2026).
 
 ## Verify
 
