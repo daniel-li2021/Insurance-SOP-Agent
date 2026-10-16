@@ -173,8 +173,15 @@ def create_app(directory: Path | None = None, interpreter=None, clock=time.time)
     @app.get('/api/demo-starter')
     def demo_starter():
         p = controller.f.person('P9')
-        return {'opening':f'My name is {p.name}, policy {p.policy_number}. I’m calling about my denied healthcare claim from January. My DOB is {p.dob}, and my SSN last four is {p.id_last4}.',
-                'description':'Margaret is calling about a denied healthcare claim. Start with her supplied synthetic details, then ask about documents, next steps, or the recorded payment amounts.'}
+        opening = f'My name is {p.name}, policy {p.policy_number}. I’m calling about my denied healthcare claim from January. My DOB is {p.dob}, and my SSN last four is {p.id_last4}.'
+        description = 'Start with Margaret’s synthetic details, then ask about documents, next steps, or the recorded payment amounts.'
+        return {'opening': opening, 'description': description, 'scenarios': [
+            {'id': 'standard', 'name': 'Standard Claim', 'description': description, 'opening': opening},
+            {'id': 'frustrated', 'name': 'Frustrated Caller', 'description': 'Try empathy and the privacy gate first. Then provide the synthetic identity details below to continue.',
+             'opening': 'I already told you who I am. This is ridiculous. Just tell me why my healthcare claim from January was denied.'},
+            {'id': 'ambiguous', 'name': 'Ambiguous Claim', 'description': 'Verify identity, then choose between two January healthcare claims. The agent should ask before selecting.',
+             'opening': f'My name is {p.name}, DOB {p.dob}, SSN last four {p.id_last4}. What is the status of my January healthcare claim?'},
+        ]}
 
     @app.post('/api/session')
     def start(request: Request, response: Response):

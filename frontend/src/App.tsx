@@ -56,6 +56,7 @@ function Inspector({ session }: { session: Session }) {
 }
 
 type Pending = { path: string; body: Record<string,unknown>; text?: string }
+type DemoScenario = { id: string; name: string; opening: string; description: string }
 
 function lockedSession(s: Session): Session {
   return { ...s, verified:false, phase:'VERIFY_ID', case_id:null, choices:[], summary:null, auth_expires_at:null,
@@ -74,7 +75,10 @@ export default function App() {
   const [mobileInspector, setMobileInspector] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [demoOpen, setDemoOpen] = useState(false)
-  const [demo, setDemo] = useState<{ opening: string; description: string } | null>(null)
+  const [demo, setDemo] = useState<{ opening: string; scenarios: DemoScenario[] } | null>(null)
+  const [demoChoice, setDemoChoice] = useState('standard')
+  const [demoError, setDemoError] = useState('')
+  const [resetOpen, setResetOpen] = useState(false)
   const [nearBottom, setNearBottom] = useState(true)
   const [newMessage, setNewMessage] = useState(false)
   const [remaining, setRemaining] = useState(0)
@@ -83,6 +87,9 @@ export default function App() {
   const sendingRef = useRef(false)
   const mobileInspectorButton = useRef<HTMLButtonElement>(null)
   const settingsButton = useRef<HTMLButtonElement>(null)
+  const resetButton = useRef<HTMLButtonElement>(null)
+  const demoButton = useRef<HTMLButtonElement>(null)
+  const demoInserted = useRef(false)
 
   useEffect(() => {
     let active = true
@@ -119,7 +126,7 @@ export default function App() {
     else setNewMessage(true)
   // Keep the scroll position when the reader has moved up.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session?.messages.length, busy])
+  }, [session?.messages.length, busy, session?.summary?.id, remaining > 0])
 
   async function execute(operation: Pending) {
     if (!session || sendingRef.current) return
@@ -152,17 +159,21 @@ export default function App() {
   }
   async function reset() {
     if (sendingRef.current) return
+    sendingRef.current = true
     setBusy(true); setError('')
-    try { setSession(await api<Session>('/session',{})); setText(''); setPending(null); setNearBottom(true) }
+    try { setSession(await api<Session>('/session',{})); setText(''); setPending(null); setNearBottom(true); setResetOpen(false) }
     catch (e) { setError((e as Error).message) }
-    finally { setBusy(false) }
+    finally { setBusy(false); sendingRef.current = false }
   }
   async function showDemo() {
+    demoInserted.current = false
+    setDemoError('')
     setDemoOpen(true)
-    if (!demo) try { setDemo(await api('/demo-starter')) } catch(e) { setError((e as Error).message) }
+    if (!demo) try { setDemo(await api('/demo-starter')) } catch(e) { setDemoError((e as Error).message) }
   }
   const summary = session?.summary
   const activePhase = PHASES.indexOf(session?.phase || 'VERIFY_ID')
+  const selectedDemo = demo?.scenarios.find(s => s.id === demoChoice)
 
   return <Tabs.Root value={tab} onValueChange={setTab} className="app-shell">
     <header className="app-header"><a href="/" aria-label="ClaimFlow home"><Brand/></a><span className="header-divider"/><span className="workspace-label">Claims support workspace</span>
@@ -170,15 +181,16 @@ export default function App() {
       <Button ref={settingsButton} variant="ghost" size="sm" disabled={!session||busy||!!pending} onClick={()=>setSettingsOpen(true)}>Model settings</Button><span className="demo-label"><span/>Synthetic data</span>
     </header>
     <Tabs.Content value="playground" className="workspace" forceMount hidden={tab!=='playground'}>
-      <div className="page-heading"><div><div className="eyebrow">AGENT PLAYGROUND</div><h1>Claims support</h1><p>A clear answer. A considered next step.</p></div><div className="heading-actions"><span className="model-label"><span className={'connection-dot '+(session?.model==='scripted'?'offline':'')}/>{session?.model === 'scripted' ? 'Offline · Scripted' : session?.model ? 'Live · ' + session.model : 'Connecting'}</span><Button variant="outline" size="sm" disabled={busy} onClick={reset}><Plus size={15}/>New session</Button></div></div>
+      <div className="page-heading"><div><div className="eyebrow">AGENT PLAYGROUND</div><h1>Claims support</h1><p>A clear answer. A considered next step.</p></div><div className="heading-actions"><span className="model-label"><span className={'connection-dot '+(session?.model==='scripted'?'offline':'')}/>{session?.model === 'scripted' ? 'Offline · Scripted' : session?.model ? 'Live · ' + session.model : 'Connecting'}</span><Button ref={resetButton} variant="outline" size="sm" disabled={!session||busy} onClick={()=>session?.messages.length||text.trim()?setResetOpen(true):void reset()}><Plus size={15}/>New session</Button></div></div>
       <ol className="phase-strip" aria-label="Workflow progress">{PHASE_NAMES.map((name,n) => <li key={name} aria-current={n===activePhase?'step':undefined} className={n===activePhase?'current':n<activePhase?'complete':''}><span className="phase-number">{n<activePhase?<Check size={14}/>:String(n+1).padStart(2,'0')}</span><span>{name}</span>{n<3&&<ChevronRight className="phase-chevron" size={16}/>}</li>)}</ol>
       <main className={'playground-layout '+(!inspector?'inspector-hidden':'')}>
         <section className="chat-panel" aria-label="Claim support conversation">
           <div className="panel-header"><span className="chat-agent-icon"><ShieldCheck size={18}/></span><div><h2>ClaimFlow assistant</h2><p>Guided by your insurer’s demo SOP</p></div><span className="private-note"><LockKeyhole size={12}/>Private session</span><Button variant="ghost" size="icon" className="desktop-inspector-button" aria-label={inspector?'Hide workflow inspector':'Show workflow inspector'} aria-pressed={inspector} onClick={()=>setInspector(!inspector)}>{inspector?<PanelRightClose size={18}/>:<PanelRightOpen size={18}/>}</Button><Button variant="ghost" size="icon" className="mobile-inspector-button" ref={mobileInspectorButton} aria-label="Open workflow inspector" onClick={()=>setMobileInspector(true)}><PanelRightOpen size={18}/></Button></div>
           <div className="conversation" ref={scrollRef} onScroll={()=>{ const el=scrollRef.current!; const near=el.scrollHeight-el.scrollTop-el.clientHeight<90; setNearBottom(near); if(near)setNewMessage(false) }}>
             <div className="conversation-date">YOUR SUPPORT SESSION</div>
+            {session?.messages.length===0&&<div className="starter-area"><div className="starter-label">EXPLORING THE DEMO?</div><button ref={demoButton} className="scenario-starter" onClick={showDemo}><span className="starter-icon"><ClipboardList size={18}/></span><span><strong>Try a guided scenario</strong><small>Standard claim, frustrated caller, or ambiguous claim</small></span><ArrowRight size={17}/></button><p className="micro muted"><Info size={12}/> Synthetic records only. Please don’t enter real personal information.</p></div>}
             <div className="assistant-message welcome"><Brand small/><div className="message-body"><span className="message-author">ClaimFlow</span><p>Hello, I’m here to help with your insurance claim.</p><p>We’ll first verify your identity, then look at your claim together and work through the next steps. You can ask questions along the way.</p><p className="muted">To begin, tell me what brings you here and share any three approved identity details: full name, date of birth, phone, email, or SSN / approved national-ID last four.</p></div></div>
-            {session?.messages.length===0&&<div className="starter-area"><div className="starter-label">EXPLORING THE DEMO?</div><button className="scenario-starter" onClick={showDemo}><span className="starter-icon"><ClipboardList size={18}/></span><span><strong>Try a guided scenario</strong><small>Use Margaret’s synthetic identity to explore a claim</small></span><ArrowRight size={17}/></button><p className="micro muted"><Info size={12}/> Synthetic records only. Please don’t enter real personal information.</p></div>}
+
             {session?.messages.map(m => <div className={m.role==='user'?'user-message':'assistant-message'} key={m.id}>{m.role==='assistant'&&<Brand small/>}<div className="message-body"><span className="message-author">{m.role==='assistant'?'ClaimFlow':'You'}</span><div className="message-text">{m.text}</div>{m.references.length>0&&<details className="message-grounding"><summary><ShieldCheck size={12}/>Grounded in {m.references.length} {m.references.length===1?'source':'sources'}<ChevronDown size={12}/></summary><ul>{m.references.map(r=><li key={r} className="mono">{r}</li>)}</ul></details>}</div></div>)}
             {session?.choices.length ? <div className="case-choices">{session.choices.map(c=><Button variant="outline" size="sm" key={c.case_id} disabled={busy} onClick={()=>void execute({path:'/turn',body:{text:`Please discuss ${c.case_id}. I want its status.`,version:session.version,request_id:crypto.randomUUID()},text:`Please discuss ${c.case_id}. I want its status.`})}><span className="mono">{c.case_id}</span> · {c.created_at.slice(0,4)}<ArrowRight size={13}/></Button>)}</div>:null}
             {summary&&<div className="summary-preview"><div className="summary-header"><Mail size={17}/><h3>Your discussion summary</h3><span>SIMULATION</span></div><div className="summary-content">{summary.text}</div><div className="summary-recipient"><span>To your on-file email</span><strong>{summary.recipient}</strong></div>
@@ -198,10 +210,11 @@ export default function App() {
       </main>
     </Tabs.Content>
     <Tabs.Content value="lab" className="workspace lab-workspace" forceMount hidden={tab!=='lab'}><EvaluationLab session={session}/></Tabs.Content>
-    {settingsOpen&&session&&<ModelSettings session={session} onApplied={s=>{setSession(s);setText('');setPending(null);setError('')}} onBusy={value=>{sendingRef.current=value;setBusy(value)}} onClose={()=>setSettingsOpen(false)} restoreFocus={()=>settingsButton.current?.focus()}/>}
+    {settingsOpen&&session&&<ModelSettings session={session} onApplied={s=>{setSession(s);setText('');setPending(null);setError('');setNearBottom(true);setNewMessage(false)}} onBusy={value=>{sendingRef.current=value;setBusy(value)}} onClose={()=>setSettingsOpen(false)} restoreFocus={()=>settingsButton.current?.focus()}/>}
     <footer className="app-footer"><span><ShieldCheck size={12}/>A support demo with deterministic SOP controls</span><span>Synthetic identity matching · Simulated actions</span></footer>
     <Dialog.Root open={mobileInspector} onOpenChange={setMobileInspector}><Dialog.Portal><Dialog.Overlay className="dialog-overlay"/><Dialog.Content className="inspector-drawer" onCloseAutoFocus={event=>{event.preventDefault();mobileInspectorButton.current?.focus()}}><Dialog.Title className="sr-only">Workflow inspector</Dialog.Title><Dialog.Description className="sr-only">Verification, context, and sanitized policy decisions</Dialog.Description><Dialog.Close className="dialog-close" aria-label="Close workflow inspector"><X size={20}/></Dialog.Close>{session&&<Inspector session={session}/>}</Dialog.Content></Dialog.Portal></Dialog.Root>
-    <Dialog.Root open={demoOpen} onOpenChange={setDemoOpen}><Dialog.Portal><Dialog.Overlay className="dialog-overlay"/><Dialog.Content className="demo-dialog"><span className="eyebrow">SYNTHETIC DEMO SCENARIO</span><Dialog.Title>Meet Margaret.</Dialog.Title><Dialog.Description>Explore the complete workflow with a fictional policyholder. These details are supplied test data, not real credentials.</Dialog.Description>{demo?<><p className="demo-context">{demo.description}</p><div className="demo-opening">{demo.opening}</div><Button onClick={()=>{setText(demo.opening);setDemoOpen(false);setTimeout(()=>inputRef.current?.focus(),0)}}>Use this opening message<ArrowRight size={16}/></Button></>:<p role="status">Loading synthetic scenario…</p>}<Dialog.Close className="dialog-close" aria-label="Close demo scenario"><X size={20}/></Dialog.Close></Dialog.Content></Dialog.Portal></Dialog.Root>
+    <Dialog.Root open={demoOpen} onOpenChange={setDemoOpen}><Dialog.Portal><Dialog.Overlay className="dialog-overlay"/><Dialog.Content className="demo-dialog" onCloseAutoFocus={e=>{e.preventDefault();(demoInserted.current?inputRef:demoButton).current?.focus()}}><span className="eyebrow">SYNTHETIC DEMO SCENARIO</span><Dialog.Title>Choose a demo scenario</Dialog.Title><Dialog.Description>Explore the complete workflow with a fictional policyholder. These details are supplied test data, not real credentials.</Dialog.Description>{demo&&selectedDemo?<><div className="demo-scenarios" role="group" aria-label="Demo scenarios">{demo.scenarios.map(s=><Button key={s.id} variant="outline" aria-pressed={demoChoice===s.id} onClick={()=>setDemoChoice(s.id)}>{s.name}</Button>)}</div><p className="demo-context">{selectedDemo.description}</p><div className="demo-opening">{selectedDemo.opening}</div>{demoChoice==='frustrated'&&<details className="demo-identity"><summary>Synthetic identity for the next message</summary><p>{demo.opening}</p></details>}<Button onClick={()=>{demoInserted.current=true;setText(selectedDemo.opening);setDemoOpen(false)}}>Use this opening message<ArrowRight size={16}/></Button></>:demoError?<div><p role="alert">{demoError}</p><Button onClick={showDemo}>Retry loading scenarios</Button></div>:<p role="status">Loading synthetic scenario…</p>}<Dialog.Close className="dialog-close" aria-label="Close demo scenario"><X size={20}/></Dialog.Close></Dialog.Content></Dialog.Portal></Dialog.Root>
+    <Dialog.Root open={resetOpen} onOpenChange={setResetOpen}><Dialog.Portal><Dialog.Overlay className="dialog-overlay"/><Dialog.Content className="demo-dialog" onCloseAutoFocus={e=>{e.preventDefault();resetButton.current?.focus()}} onEscapeKeyDown={e=>{if(busy)e.preventDefault()}} onPointerDownOutside={e=>{if(busy)e.preventDefault()}}><Dialog.Title>Start a new session?</Dialog.Title><Dialog.Description>This clears your conversation, summary, draft, and session API key. You will return to the default model and need to verify again.</Dialog.Description><div className="summary-actions"><Dialog.Close asChild><Button variant="outline" disabled={busy}>Keep conversation</Button></Dialog.Close><Button disabled={busy} onClick={()=>void reset()}>Start new session</Button></div>{error&&<p role="alert">{error}</p>}</Dialog.Content></Dialog.Portal></Dialog.Root>
     <div className="sr-only" role="status" aria-live="polite">{!busy&&session?.messages.at(-1)?.role==='assistant'?session.messages.at(-1)?.text:''}</div>
   </Tabs.Root>
 }

@@ -24,6 +24,22 @@ def send(client,text,request_id=None):
     return client.post('/api/turn',json={'text':text,'version':s['version'],'request_id':request_id or str(uuid4())})
 
 
+@pytest.mark.parametrize('scenario_id', ['standard', 'frustrated', 'ambiguous'])
+def test_demo_starters_exercise_the_named_workflow(client, scenario_id):
+    demo = client.get('/api/demo-starter').json()
+    opening = next(s['opening'] for s in demo['scenarios'] if s['id'] == scenario_id)
+    state = send(client, opening).json()
+    if scenario_id == 'frustrated':
+        assert not state['verified'] and state['case_id'] is None
+        assert 'frustrating' in state['messages'][-1]['text']
+        state = send(client, demo['opening']).json()
+    if scenario_id == 'ambiguous':
+        assert state['verified'] and state['phase'] == 'RESOLVE_INTENT'
+        assert {c['case_id'] for c in state['choices']} == {'CL-2011', 'CL-2048'}
+    else:
+        assert state['verified'] and state['case_id'] == 'CL-2048'
+
+
 def test_full_http_flow_and_duplicate_request(client):
     request_id=str(uuid4())
     s=send(client,"My name is Margaret Chen, DOB 1985-03-15, SSN last four 4472. My denied healthcare claim from January.",request_id).json()

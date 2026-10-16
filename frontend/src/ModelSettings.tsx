@@ -19,18 +19,21 @@ export function ModelSettings({ session, onApplied, onBusy, onClose, restoreFocu
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState(false)
+  const [resetConfirmed, setResetConfirmed] = useState(false)
   const keyInput = useRef<HTMLInputElement>(null)
-  useEffect(() => {
+  function loadCatalog() {
     let active = true
+    setError('')
     api<Catalog>('/settings').then(data => {
       if (!active) return
       setCatalog(data); setProvider(data.current.provider); setModel(data.current.model); setSource(data.current.credential_source)
     }).catch(e => { if (active) setError(e.message) })
     return () => { active = false }
-  }, [])
+  }
+  useEffect(loadCatalog, [])
   const selected = catalog?.providers.find(p => p.id === provider)
   async function apply() {
-    if (busy || !catalog) return
+    if (busy || !catalog || (session.messages.length > 0 && !resetConfirmed)) return
     setBusy(true); onBusy(true); setError(''); setSuccess(false)
     // The password exists only in the input and this HTTPS/same-origin request.
     const key = keyInput.current?.value || undefined
@@ -62,13 +65,14 @@ export function ModelSettings({ session, onApplied, onBusy, onClose, restoreFocu
           <label htmlFor="model-credentials">Credentials</label><select id="model-credentials" value={source} disabled={busy} onChange={e => { setSource(e.target.value as typeof source); setSuccess(false); if (keyInput.current) keyInput.current.value = '' }}>
             <option value="demo">Demo-configured key{selected?.demo_configured ? ' · available' : ' · unavailable'}</option><option value="byok">Bring Your Own Key</option>
           </select>
-          {source === 'byok' ? <><label htmlFor="provider-key">API key</label><input id="provider-key" type="password" autoComplete="off" spellCheck={false} maxLength={512} ref={keyInput} disabled={busy} required/><p className="micro muted">Re-enter to validate. Stored encrypted on the backend for this session, never in browser storage. New session removes it. Use a local connection or HTTPS.</p></> : <p className="micro muted">{selected?.demo_configured ? 'Uses a backend environment key. The browser never receives it.' : 'No demo key is configured. Choose Bring Your Own Key or another provider.'}</p>}
+          {source === 'byok' ? <><label htmlFor="provider-key">API key</label><input id="provider-key" type="password" autoComplete="off" spellCheck={false} maxLength={512} ref={keyInput} disabled={busy} required/><p className="micro muted">Re-enter to validate. Stored encrypted on the backend for this session, never in browser storage. New session removes it. Use a local connection or HTTPS.</p></> : <div><p className="micro muted">{selected?.demo_configured ? 'Uses a backend environment key. The browser never receives it.' : 'No demo key is configured. Choose Bring Your Own Key or another provider.'}</p>{!selected?.demo_configured&&<Button variant="outline" disabled={busy} onClick={()=>{setSource('byok');setSuccess(false)}}>Use my own key</Button>}</div>}
           <a href={selected?.key_url} target="_blank" rel="noreferrer">Get an API key from {selected?.label} ↗</a>
         </>}
         <p className="settings-reset">Applying clears the conversation and summary, and requires fresh identity verification. Connection validation uses one small model call; provider charges may apply.</p>
+        {session.messages.length > 0 && <label className="settings-confirm"><input type="checkbox" checked={resetConfirmed} disabled={busy} onChange={e=>setResetConfirmed(e.target.checked)}/>Clear this conversation and summary when applying</label>}
         {error && <p role="alert" className="lab-error">{error}</p>}{success && <p role="status" className="status-good">Connection validated. Ready for a new conversation.</p>}
-        <Button type="submit" disabled={busy || (provider !== 'scripted' && source === 'demo' && !selected?.demo_configured)}>{busy && <Loader2 size={15} className="spin"/>}{busy ? 'Validating…' : provider === 'scripted' ? 'Apply offline mode' : 'Validate & apply'}</Button>
-      </form> : <p role="status">{error || 'Loading model settings…'}</p>}
+        <Button type="submit" disabled={busy || (session.messages.length > 0 && !resetConfirmed) || (provider !== 'scripted' && source === 'demo' && !selected?.demo_configured)}>{busy && <Loader2 size={15} className="spin"/>}{busy ? 'Validating…' : provider === 'scripted' ? 'Apply offline mode' : 'Validate & apply'}</Button>
+      </form> : error ? <div><p role="alert">{error}</p><Button onClick={loadCatalog}>Retry loading settings</Button></div> : <p role="status">Loading model settings…</p>}
       <Dialog.Close className="dialog-close" aria-label="Close model settings" disabled={busy}><X size={20}/></Dialog.Close>
     </Dialog.Content>
   </Dialog.Portal></Dialog.Root>

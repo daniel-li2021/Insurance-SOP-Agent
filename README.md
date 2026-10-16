@@ -4,6 +4,10 @@ A working insurance support demo: natural language interpretation, deterministic
 
 `VERIFY_ID → RESOLVE_INTENT → PROCESS_CASE → POST_PROCESS`
 
+![ClaimFlow summary and workflow inspector in offline mode](docs/screenshots/final-summary-desktop.png)
+
+Final acceptance: **96 backend tests, 23 policy scenarios, 11 Docker browser tests, and production frontend build passed**. See the [requirement-by-requirement review and UI acceptance](docs/FINAL_VALIDATION.md).
+
 ## Run locally
 
 Requires Python 3.11+ and Node 22. The Python and frontend lockfiles record tested versions.
@@ -18,7 +22,7 @@ cp -n .env.example .env
 .venv/bin/python -m uvicorn backend.main:create_app --factory --host 127.0.0.1 --port 8000
 ```
 
-Open [localhost:8000](http://localhost:8000). Choose **Try a guided scenario** to insert Margaret's supplied synthetic opening, or type a conversation. Review the summary to explicitly Send a simulation or Skip. No real email is delivered.
+Open [localhost:8000](http://localhost:8000). Choose **Try a guided scenario** for Standard Claim, Frustrated Caller, or Ambiguous Claim. Each inserts an editable synthetic opening without sending it. The frustrated scenario includes expandable identity details for continuing after the privacy gate. Or type a conversation. **New session** asks for confirmation when there is a conversation or unsent draft. Review the summary to explicitly Send a simulation or Skip. No real email is delivered.
 
 For live interpretation, set `OPENAI_API_KEY` and `MODEL_MODE=live` in the ignored `.env`; `OPENAI_MODEL=gpt-6.1-sol` is the tested default. The curated V2 catalog accepts only supported model IDs; arbitrary names and endpoints are rejected. If `MODEL_MODE` is omitted, a configured key selects live mode; without a key, the default is scripted. `MODEL_MODE=scripted` never calls a model and has a deliberately limited parser. Mode is always visible. Restart the backend after configuration changes.
 
@@ -30,7 +34,7 @@ Open **Model settings** from the header. Choose OpenAI, Anthropic Claude, Google
 
 The catalog is intentionally small: `gpt-6.1-sol`, `claude-sonnet-5-5`, and `gemini-3.8-flash`. OpenAI has live acceptance evidence. Claude/Gemini have mocked contract evidence and require live validation with your provider account; the dialog labels that distinction. There is no silent provider fallback.
 
-Choose **Bring Your Own Key** to enter a provider key in the password field. **Validate & apply** makes one small paid structured-output call with an empty synthetic context; success starts fresh verification and clears the old conversation/summary. Failure keeps the current workflow. Switching is blocked during another operation; another browser tab may need a refresh before applying. The key is cleared from the input, excluded from responses/logs/model context, and encrypted with backend session state. It is never saved in browser storage or bundled frontend code. Re-enter it for revalidation. **New session** removes the session row/key and returns to the backend default. Session retention/backup limits still apply; use local loopback or HTTPS.
+Choose **Bring Your Own Key** to enter a provider key in the password field. **Validate & apply** makes one small paid structured-output call with an empty synthetic context; success starts fresh verification and clears the old conversation/summary. When a conversation exists, explicitly confirm that reset before applying. If a demo key is unavailable, **Use my own key** opens BYOK directly. Failure keeps the current workflow. Switching is blocked during another operation; another browser tab may need a refresh before applying. The key is cleared from the input, excluded from responses/logs/model context, and encrypted with backend session state. It is never saved in browser storage or bundled frontend code. Re-enter it for revalidation. **New session** removes the session row/key and returns to the backend default. Session retention/backup limits still apply; use local loopback or HTTPS.
 
 Official key setup: [OpenAI](https://platform.openai.com/api-keys), [Anthropic](https://platform.claude.com/settings/keys), [Google AI Studio](https://aistudio.google.com/apikey). Provider account access, billing and model availability can differ. Credential rejection, quota/rate limits, unavailable models, malformed output and timeouts produce safe errors without exposing provider bodies or changing SOP state. All live traffic, including BYOK and connection probes, shares the existing concurrency/rate/token budgets.
 
@@ -40,7 +44,7 @@ Official key setup: [OpenAI](https://platform.openai.com/api-keys), [Anthropic](
 docker compose up --build
 ```
 
-Compose reads `.env`, binds only to local port 8000, and persists sessions in a named volume. Keep `DATA_DIR=/app/data` inside the container. The multi-stage build excludes `.env` and runs the backend as a nonroot user. The Linux/ARM64 image and Compose runtime were verified on Docker Desktop, including eleven browser checks and encrypted session/model-selection recovery after container restart. See [current V2 evidence](docs/VALIDATION.md#v2-validation--october-16-2026).
+Compose reads `.env`, binds only to local port 8000, and persists sessions in a named volume. Keep `DATA_DIR=/app/data` inside the container. The multi-stage build excludes `.env` and runs the backend as a nonroot user. The Linux/ARM64 image and Compose runtime were verified on Docker Desktop, including eleven final browser checks and encrypted session/model-selection recovery after container recreation. See [final acceptance evidence](docs/FINAL_VALIDATION.md).
 
 ## Verify
 

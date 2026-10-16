@@ -2,6 +2,23 @@
 
 One FastAPI process serves a React/Vite build and same-origin JSON API. SQLite stores encrypted session state; no framework, vector store, queue, or external database is required. The six original fixtures remain unchanged.
 
+```mermaid
+flowchart LR
+    UI[Playground / Model settings] --> API[Same-origin FastAPI API]
+    API --> Guards[Session / CSRF / origin / limits / lease]
+    Guards --> Model[Selected interpreter: fixed provider or offline]
+    Model --> Schema[Validated Interpretation]
+    Schema --> SOP[Deterministic SOP controller]
+    SOP --> Identity[Three-field identity and scoped authorization]
+    Identity --> Records[Authorized fixture reads]
+    Records --> Reply[Grounded response / summary preview]
+    Reply --> Consent[Explicit Send or Skip]
+    Consent --> Simulation[Simulated email only]
+    SOP --> Store[Encrypted SQLite session]
+    API --> Lab[Isolated scripted Evaluation Lab]
+```
+
+
 ## Turn boundary
 
 1. `main.py` checks session ownership, CSRF, origin, request size, deduplication, version, and a durable 45-second lease. It applies persistent rate limits and reserves the model budget before live calls.
@@ -29,7 +46,7 @@ Claim-specific facts and deadlines take precedence over generic follow-up guidan
 
 ## UI and evaluation
 
-React owns rendering and draft input; the backend owns all workflow state. Radix implements main tabs, evaluation tabs, and dialogs, including explicit focus restoration for the mobile inspector. The composer remains fixed while chat and desktop inspector scroll independently. The browser uses the server timestamp to expire visible authorization/consent offers; server checks are authoritative. It immediately hides protected content when authorization expires or a request returns 401, even if its refresh cannot reach the server. Retry retains the request ID and message, and a conflict refreshes the expected state version.
+React owns rendering and draft input; the backend owns all workflow state. Radix implements main tabs, evaluation tabs, and dialogs, including explicit focus restoration for the mobile inspector. The composer remains fixed while chat and desktop inspector scroll independently. Mobile Evaluation Lab uses one outer results scroll region with a bounded scenario picker. Scenario selection inserts a draft only; the fixture-backed starter endpoint provides Standard Claim, Frustrated Caller, and Ambiguous Claim. New session requires confirmation for an existing conversation or draft, and model apply requires a reset acknowledgment for an existing conversation. Dialogs restore focus, and settings/scenario catalog failures provide local retry controls. Summary scrolling also accounts for the consent timer becoming ready so Send/Skip remain in view. The browser uses the server timestamp to expire visible authorization/consent offers; server checks are authoritative. It immediately hides protected content when authorization expires or a request returns 401, even if its refresh cannot reach the server. Retry retains the request ID and message, and a conflict refreshes the expected state version.
 
 `evaluation.py` is shared by pytest, the CLI, and the Lab. The 23 scenarios check event deltas, explicit action outcomes, locked public views, and deduplication per preview. Runs are isolated, fixed-clock policy tests with sanitized traces and expected/observed assertions. They do not call the live model or modify a customer session. `scripts/evaluate_live.py` retains the original six-call opt-in probe; `scripts/evaluate_v1_acceptance.py` contains the separate 12-call acceptance suite. Live quality is not inferred from deterministic results.
 
