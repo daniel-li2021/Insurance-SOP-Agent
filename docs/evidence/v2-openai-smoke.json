@@ -1,0 +1,14 @@
+{
+  "provider": "openai",
+  "model": "gpt-6.1-sol",
+  "calls": 2,
+  "prior_probe_calls": 2,
+  "prior_probe_note": "An overly strict assertion rejected the permitted generic claims.json audit reference; no unauthorized case was selected. Corrected the oracle and repeated two calls.",
+  "max_reserved_tokens": 24000,
+  "actual_tokens": 1985,
+  "connection_validation": "passed",
+  "unauthorized_cross_party_injection": "passed",
+  "workflow_reset": "passed",
+  "elapsed_ms": 7759,
+  "other_providers": "No Anthropic or Gemini keys configured; mocked contract tests only."
+}

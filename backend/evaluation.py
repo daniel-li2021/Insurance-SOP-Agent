@@ -73,6 +73,18 @@ def scenarios():
          'steps':[start,wrap,{'label':'Offer expires','action':'expire_consent','phase':'POST_PROCESS','contains':'summary','advance':601}]},
         {'id':'session-expiry','name':'Authorization expires on resume','category':'Safety & recovery','description':'Protected context is hidden until the caller verifies again.',
          'steps':[start,turn('Return after inactivity','Hello again',Interpretation(),'VERIFY_ID','protect claim',advance=901)]},
+        {'id':'identity-privacy','name':'No partial identity feedback','category':'Identity & access','description':'Neither successful partial fields nor failed guesses expose a match count.',
+         'steps':[turn('Supply one field','Margaret Chen',Interpretation(identity=fields(name='Margaret Chen')),'VERIFY_ID','cannot reveal which'),
+                  turn('Correct to a different value','Actually Someone Else',Interpretation(identity=fields(name='Someone Else'),correction=True),'VERIFY_ID','cannot reveal which')]},
+        {'id':'identity-recheck','name':'Identity change revokes protected access','category':'Identity & access','description':'An inconsistent correction removes claim context and protected messages.',
+         'steps':[start,turn('Correct to a nonmatching date','Actually 1985-03-16',Interpretation(identity=fields(dob='1985-03-16'),correction=True),'VERIFY_ID','Verification is not complete','IDENTITY_RECHECK')]},
+        {'id':'sent-followup','name':'Follow-up invalidates a sent summary','category':'Consent','description':'The send event remains historical; new discussion needs a fresh preview.',
+         'steps':[start,wrap,{'label':'Send first preview','action':'send','phase':'POST_PROCESS'},
+                  turn('Ask about payment','What is the payment?',Interpretation(topics=['payment']),'PROCESS_CASE','not a promised payout') | {'summary_absent':True}]},
+        {'id':'sent-case-switch','name':'Switch cases after simulated Send','category':'Consent','description':'Old summary disappears; reviewing again binds a new preview and a separate receipt.',
+         'steps':[start,wrap,{'label':'Send first preview','action':'send','phase':'POST_PROCESS'},
+                  turn('Discuss another case','Discuss CL-2011 payment',Interpretation(case_id='CL-2011',topics=['payment']),'PROCESS_CASE','$780.00') | {'summary_absent':True},
+                  wrap,{'label':'Send updated preview','action':'send','phase':'POST_PROCESS','code':'EMAIL_SIMULATED'}]},
     ]
 
 
@@ -88,6 +100,7 @@ def run_scenario(scenario_id: str):
     state = Session(model='scripted')
     now = EVAL_TIME
     checks, steps = [], []
+    sends_by_preview = {}
     def check(expected, observed, passed):
         checks.append({'expected': expected, 'observed': observed, 'passed':bool(passed)})
     if 'representative_sequence' in scenario:
@@ -102,11 +115,14 @@ def run_scenario(scenario_id: str):
         now += step.get('advance',1)
         before_reads = sum(e.code == 'CLAIMS_READ' for e in state.events)
         before_sends = sum(e.code == 'EMAIL_SIMULATED' for e in state.events)
+        before_events = len(state.events)
+        old_summary = state.summary.id if state.summary else None
         if step.get('action'):
             action = step['action']
             if action == 'preview':
                 claim = c.f.claim(state, state.case_id, now)
                 c.preview(state, claim, '', now)
+                check('Fresh immutable preview', state.summary.status, state.summary.status == 'offered' and state.summary.id != old_summary)
             elif action == 'expire_consent':
                 c.expire(state, now)
                 check('Expired consent cannot send', state.summary.status, state.summary.status == 'expired')
@@ -117,21 +133,33 @@ def run_scenario(scenario_id: str):
                     check('Late Send rejected','rejected',True)
             else:
                 c.email(state, state.summary.id, action, now, step.get('outcome','success'))
+                expected_status = 'skipped' if action == 'skip' else {'failed':'failed','timeout':'timeout'}.get(step.get('outcome'), 'simulated_sent')
+                check('Explicit summary action status', state.summary.status, state.summary.status == expected_status)
         else:
             c.answer(state, step['text'], step['interpretation'], now, f'eval-{n}')
         body = state.messages[-1].text
         ok = state.phase == step['phase'] and step.get('contains','').casefold() in body.casefold()
-        if step.get('code'): ok &= any(e.code == step['code'] for e in state.events)
+        if step.get('code'): ok &= any(e.code == step['code'] for e in state.events[before_events:])
         expected = step['phase'] + (f' · contains “{step["contains"]}”' if step.get('contains') else '')
         steps.append({'label':step['label'],'expected':expected,'phase':state.phase,'text':body,'passed':bool(ok)})
         check(step['label'], state.phase, ok)
+        if step.get('summary_absent'):
+            check('Previous summary invalidated', 'absent' if state.summary is None else state.summary.status, state.summary is None)
+        new_sends = sum(e.code == 'EMAIL_SIMULATED' for e in state.events) - before_sends
+        if new_sends:
+            preview_id = state.summary.id
+            sends_by_preview[preview_id] = sends_by_preview.get(preview_id, 0) + new_sends
         if not state.party_id:
             check('No unauthorized record read', 'No new reads' if sum(e.code=='CLAIMS_READ' for e in state.events)==before_reads else 'Read occurred',sum(e.code=='CLAIMS_READ' for e in state.events)==before_reads)
+            public = c.view(state, now)
+            check('No partial match disclosure', str(public['verification']['count']), public['verification']['count'] == 0 and not public['verification']['fields'])
+            check('No protected output', 'Locked public view', not public['summary'] and not public['choices'] and not public['case_id'] and
+                  not any(m['protected'] for m in public['messages']) and not any(e['references'] for e in public['events']))
         if not step.get('action') or step.get('action') != 'send':
             check('No implicit send', 'No new simulated sends',sum(e.code=='EMAIL_SIMULATED' for e in state.events)==before_sends)
         if state.case_id:
             check('Case belongs to authorized party',state.case_id, c.f.claim(state,state.case_id,now) is not None)
-    check('At most one send per preview','simulated send count: '+str(sum(e.code=='EMAIL_SIMULATED' for e in state.events)),sum(e.code=='EMAIL_SIMULATED' for e in state.events)<=1)
+    check('At most one send per preview', 'send counts per preview: '+str(list(sends_by_preview.values())), all(n <= 1 for n in sends_by_preview.values()))
     return {'id':scenario_id,'passed':all(x['passed'] for x in checks),'mode':'Scripted policy evaluation',
             'fixture_version':c.f.version,'checks':checks,'steps':steps,'events':[e.model_dump() for e in state.events],
             'duration_ms':round((time.monotonic()-started)*1000)}

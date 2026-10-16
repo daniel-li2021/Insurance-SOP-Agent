@@ -1,0 +1,42 @@
+{
+  "date": "2026-10-16",
+  "scope": "Single-instance synthetic ClaimFlow V2; no public deployment",
+  "code_commit": "cfdedbc",
+  "image": "claimflow:v2-review",
+  "image_id": "sha256:be6a514f0773cb2fd80fc8e73fd7c341a2024a7bb87058c3c9d54d04245c3aef",
+  "platform": "linux/arm64",
+  "pytest_passed": 93,
+  "policy_scenarios_passed": 23,
+  "docker_browser_tests_passed": 11,
+  "frontend_build": "passed TypeScript and Vite",
+  "checks": {
+    "container_health": "healthy",
+    "nonroot_uid": 10001,
+    "no_env_or_provider_keys_in_container": true,
+    "private_encryption_key_permissions": "0600",
+    "csrf_rejection": true,
+    "model_selection_restart_persistence": true,
+    "conversation_and_simulated_receipt_restart_persistence": true,
+    "send_deduplication": true,
+    "configured_keys_absent_from_frontend_bundle": true,
+    "desktop_and_mobile_screenshots_inspected": true,
+    "settings_focus_restoration": true
+  },
+  "providers": {
+    "openai": "12-call V1 acceptance plus 2 successful V2 HTTP/provider checks; 2 prior V2 calls used an overstrict audit-reference oracle, then were repeated",
+    "anthropic": "mocked native contract only; no configured key",
+    "gemini": "mocked native contract only; no configured key"
+  },
+  "verification_adjustments": [
+    "Reused Chromium from /private/tmp/claimflow-browsers after default browser cache lookup failed.",
+    "Combined related settings browser checks into one session after the expanded suite hit the unchanged 12-session/hour limit.",
+    "Reproduced and fixed settings dialog focus restoration before final passing run."
+  ],
+  "not_verified": [
+    "Claude/Gemini live model access, schema acceptance, latency or conversation quality",
+    "AMD64 execution",
+    "Public HTTPS, proxy operation or sustained load",
+    "Comprehensive accessibility acceptance or external security review",
+    "Production customer identity, healthcare compliance, provider retention arrangements or real action integrations"
+  ]
+}
