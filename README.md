@@ -77,3 +77,5 @@ The disk limits the service to one instance and causes brief deployment downtime
 - [Accepted proposal](docs/PROPOSAL.md) · [Original assignment](requirement.md) · [Six unchanged fixtures](insurance_claims/fixtures)
 
 This is synthetic static-data authentication, not production healthcare identity assurance. There are no real uploads, appeals, payments, transfers, or email deliveries. Scripted mode is limited; grounded factual phrasing is intentionally controlled. Small live-model probes do not establish general conversational quality. Production authentication, insurer-approved representative proof and policy rules, real integrations, operational availability, and appropriate provider data-handling arrangements require separate work.
+
+The [12-call V1 acceptance closure](docs/VALIDATION.md#v1-live-acceptance-closure--october-16-2026) validates the core journey and emotional-support/SOP-recovery bonus within the bounded synthetic demo scope. Repeat only when relevant behavior changes: `.venv/bin/python scripts/evaluate_v1_acceptance.py` (12 paid calls, no automatic retries).

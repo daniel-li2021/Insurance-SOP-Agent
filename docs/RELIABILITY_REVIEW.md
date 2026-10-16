@@ -69,3 +69,7 @@ Keep deterministic security assertions separate from a short human reading of cl
 ## Readiness
 
 The scoped V1 can be presented as a synthetic SOP harness with deterministic facts/actions, limited scripted mode, and historical live interpretation evidence. There are no remaining reproduced blockers in that scope after the corrections and checks above. Natural language interpretation is plausible for the assignment's guided journey, but broad messy-language quality remains unverified; do not claim that it is universally natural or safe. A real-customer service, independent penetration-test claim, production healthcare claim, or claim of real email/action delivery is not ready.
+
+## Executed follow-up
+
+The proposed suite has now been executed: 12/12 calls passed, with separate conversational response reading. See [V1 acceptance closure](VALIDATION.md#v1-live-acceptance-closure--october-16-2026) and [sanitized evidence](evidence/v1-live-acceptance.json). This supersedes the earlier “not executed”/pending quality status above. No additional V1 code correction was required. V1 and its bonus pass within the bounded synthetic demo scope; broader conversation reliability remains outside that claim.

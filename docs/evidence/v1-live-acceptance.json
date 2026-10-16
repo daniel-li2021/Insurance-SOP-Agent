@@ -1,0 +1,198 @@
+{
+  "model": "gpt-6.1-sol",
+  "prompt_version": "claimflow-extract-v1",
+  "fixture_version": "328f5c17f69b",
+  "controller_clock": 1792108800.0,
+  "calls": 12,
+  "reserved_tokens": 144000,
+  "actual_tokens": 13139,
+  "policy_and_extraction_passed": true,
+  "quality_review": "Passed scoped response reading: clear empathy for confusion, anxiety, frustration/refusal; privacy rationale and alternate fields; no pressure after explicit human request; retained early question and conditional document guidance. Repeated verification/status/deadline wording remains verbose. Anger and refusal share one turn; not independent emotion accuracy estimates.",
+  "results": [
+    {
+      "conversation": "corrections",
+      "turn": 1,
+      "policy_and_extraction_passed": true,
+      "response": "There\u2019s a lot to untangle here. Let\u2019s make the next step clear.\n\nTo protect claim information, I need three distinct matching identity fields. Verification is not complete. Please provide or explicitly correct your full name, date of birth (YYYY-MM-DD), phone, email, or SSN / approved national-ID last four. A policy number can locate a record but does not count toward verification. I cannot reveal which details match. I\u2019ve kept your claim question for after verification.",
+      "emotion": "confused",
+      "topics": [
+        "denial"
+      ],
+      "action": "continue",
+      "alternatives_exhausted": false,
+      "case_id": null,
+      "phase": "VERIFY_ID",
+      "tokens": 1057,
+      "latency_ms": 5358
+    },
+    {
+      "conversation": "corrections",
+      "turn": 2,
+      "policy_and_extraction_passed": true,
+      "response": "Your identity is verified. I can now look at your claim records.\n\nCL-2048 \u00b7 Healthcare claim \u00b7 created 2026-01-12\nRecorded status: denied.\n\nThe recorded denial reason is that the review file did not include the pathology report and the treating provider office note.\n\nRequested documents: pathology report, office note.\n\nThe recorded appeal deadline was March 18, 2026, and it has passed. Please ask a human claims representative to review what options remain. I cannot promise a late appeal, reopening, or reimbursement. No transfer or appeal has been made.",
+      "emotion": "neutral",
+      "topics": [],
+      "action": "continue",
+      "alternatives_exhausted": false,
+      "case_id": "CL-2048",
+      "phase": "PROCESS_CASE",
+      "tokens": 1116,
+      "latency_ms": 3604
+    },
+    {
+      "conversation": "corrections",
+      "turn": 3,
+      "policy_and_extraction_passed": true,
+      "response": "It makes sense to want a clear answer. I\u2019ll help you understand what the record says and what you can do next.\n\nCL-2048 \u00b7 Healthcare claim \u00b7 created 2026-01-12\nRecorded status: denied.\n\nThe general guidance gives an average of usually less than a week after missing files are received. Because this appeal deadline has passed, that is not a processing promise for this case; member support must confirm whether further review is available.\n\nThe recorded appeal deadline was March 18, 2026, and it has passed. Please ask a human claims representative to review what options remain. I cannot promise a late appeal, reopening, or reimbursement. No transfer or appeal has been made.",
+      "emotion": "anxious",
+      "topics": [
+        "timing"
+      ],
+      "action": "continue",
+      "alternatives_exhausted": false,
+      "case_id": "CL-2048",
+      "phase": "PROCESS_CASE",
+      "tokens": 1116,
+      "latency_ms": 3241
+    },
+    {
+      "conversation": "refusal",
+      "turn": 1,
+      "policy_and_extraction_passed": true,
+      "response": "To protect claim information, I need three distinct matching identity fields. Verification is not complete. Please provide or explicitly correct your full name, date of birth (YYYY-MM-DD), phone, email, or SSN / approved national-ID last four. A policy number can locate a record but does not count toward verification. I cannot reveal which details match. I\u2019ve kept your claim question for after verification.",
+      "emotion": "neutral",
+      "topics": [
+        "documents",
+        "alternatives"
+      ],
+      "action": "continue",
+      "alternatives_exhausted": false,
+      "case_id": null,
+      "phase": "VERIFY_ID",
+      "tokens": 986,
+      "latency_ms": 2995
+    },
+    {
+      "conversation": "refusal",
+      "turn": 2,
+      "policy_and_extraction_passed": true,
+      "response": "You can choose which details to share. We can use other approved identity fields, or you can seek help from a human representative.\n\nTo protect claim information, I need three distinct matching identity fields. Verification is not complete. Please provide or explicitly correct your full name, date of birth (YYYY-MM-DD), phone, email, or SSN / approved national-ID last four. A policy number can locate a record but does not count toward verification. I cannot reveal which details match. I\u2019ve kept your claim question for after verification.",
+      "emotion": "refusing",
+      "topics": [],
+      "action": "continue",
+      "alternatives_exhausted": false,
+      "case_id": null,
+      "phase": "VERIFY_ID",
+      "tokens": 1063,
+      "latency_ms": 2993
+    },
+    {
+      "conversation": "refusal",
+      "turn": 3,
+      "policy_and_extraction_passed": true,
+      "response": "Your identity is verified. I can now look at your claim records.\n\nCL-2048 \u00b7 Healthcare claim \u00b7 created 2026-01-12\nRecorded status: denied.\n\nThe recorded denial reason is that the review file did not include the pathology report and the treating provider office note.\n\nRequested documents: pathology report, office note.\n\nPathology report: If the original pathology report is missing, first ask the hospital, lab, or treating provider for a replacement copy or for the report to be resent directly. A complete readable scan or certified copy is often the best interim substitute while the mailing requirement is clarified. If the provider cannot reissue it and you do not have any readable copy, a human representative should review manual options with you.\n\nOffice note: If you cannot get the full office note immediately, ask the clinic for a complete visit summary, discharge paperwork, or a re-sent copy of the chart. If the provider can fax or upload the note directly, that is often the cleanest option. If none of those are available, a human representative should review what other clinical records may be acceptable.\n\nThese are options for review, not confirmation that a substitute will be accepted or the denial reversed.\n\nThe recorded appeal deadline was March 18, 2026, and it has passed. Please ask a human claims representative to review what options remain. I cannot promise a late appeal, reopening, or reimbursement. No transfer or appeal has been made.",
+      "emotion": "neutral",
+      "topics": [],
+      "action": "continue",
+      "alternatives_exhausted": false,
+      "case_id": "CL-2048",
+      "phase": "PROCESS_CASE",
+      "tokens": 1142,
+      "latency_ms": 4547
+    },
+    {
+      "conversation": "representative",
+      "turn": 1,
+      "policy_and_extraction_passed": true,
+      "response": "I understand you\u2019re helping someone else. Being a relative or knowing their details does not authorize access. I need verified representative identity and a policyholder authorization covering this claim. The supplied demo records do not provide those proofs. Please contact the insurer\u2019s member support to establish authorization; no transfer has occurred.",
+      "emotion": "neutral",
+      "topics": [],
+      "action": "continue",
+      "alternatives_exhausted": false,
+      "case_id": null,
+      "phase": "VERIFY_ID",
+      "tokens": 1064,
+      "latency_ms": 3813
+    },
+    {
+      "conversation": "representative",
+      "turn": 2,
+      "policy_and_extraction_passed": true,
+      "response": "I understand you\u2019re helping someone else. Being a relative or knowing their details does not authorize access. I need verified representative identity and a policyholder authorization covering this claim. The supplied demo records do not provide those proofs. Please contact the insurer\u2019s member support to establish authorization; no transfer has occurred.",
+      "emotion": "neutral",
+      "topics": [],
+      "action": "wrap_up",
+      "alternatives_exhausted": false,
+      "case_id": null,
+      "phase": "VERIFY_ID",
+      "tokens": 1135,
+      "latency_ms": 3796
+    },
+    {
+      "conversation": "switch-after-send",
+      "turn": 1,
+      "policy_and_extraction_passed": true,
+      "response": "Your identity is verified. I can now look at your claim records.\n\nCL-2048 \u00b7 Healthcare claim \u00b7 created 2026-01-12\nRecorded status: denied.\n\nThe recorded denial reason is that the review file did not include the pathology report and the treating provider office note.\n\nRequested documents: pathology report, office note.\n\nThe recorded appeal deadline was March 18, 2026, and it has passed. Please ask a human claims representative to review what options remain. I cannot promise a late appeal, reopening, or reimbursement. No transfer or appeal has been made.",
+      "emotion": "neutral",
+      "topics": [
+        "denial"
+      ],
+      "action": "continue",
+      "alternatives_exhausted": false,
+      "case_id": "CL-2048",
+      "phase": "PROCESS_CASE",
+      "tokens": 1049,
+      "latency_ms": 4272
+    },
+    {
+      "conversation": "switch-after-send",
+      "turn": 2,
+      "policy_and_extraction_passed": true,
+      "response": "There\u2019s a lot to untangle here. Let\u2019s make the next step clear.\n\nCL-2011 \u00b7 Healthcare claim \u00b7 created 2025-01-28\nRecorded status: closed.\n\nExpected reimbursement: $780.00.\nAllowed maximum: $800.00.\nFinalized insurer payment: $780.00.\nFee-schedule amount (net fee): $800.00.\nThe allowed maximum is not a promised payout. The fee-schedule amount does not establish what you owe. These are recorded amounts; I have made no payment decision.",
+      "emotion": "confused",
+      "topics": [
+        "payment"
+      ],
+      "action": "continue",
+      "alternatives_exhausted": false,
+      "case_id": "CL-2011",
+      "phase": "PROCESS_CASE",
+      "tokens": 1051,
+      "latency_ms": 3811
+    },
+    {
+      "conversation": "contextual",
+      "turn": 1,
+      "policy_and_extraction_passed": true,
+      "response": "Your identity is verified. I can now look at your claim records.\n\nCL-2048 \u00b7 Healthcare claim \u00b7 created 2026-01-12\nRecorded status: denied.\n\nThe recorded denial reason is that the review file did not include the pathology report and the treating provider office note.\n\nRequested documents: pathology report, office note.\n\nPathology report: If the original pathology report is missing, first ask the hospital, lab, or treating provider for a replacement copy or for the report to be resent directly. A complete readable scan or certified copy is often the best interim substitute while the mailing requirement is clarified. If the provider cannot reissue it and you do not have any readable copy, a human representative should review manual options with you.\n\nOffice note: If you cannot get the full office note immediately, ask the clinic for a complete visit summary, discharge paperwork, or a re-sent copy of the chart. If the provider can fax or upload the note directly, that is often the cleanest option. If none of those are available, a human representative should review what other clinical records may be acceptable.\n\nThese are options for review, not confirmation that a substitute will be accepted or the denial reversed.\n\nThe recorded appeal deadline was March 18, 2026, and it has passed. Please ask a human claims representative to review what options remain. I cannot promise a late appeal, reopening, or reimbursement. No transfer or appeal has been made.",
+      "emotion": "neutral",
+      "topics": [
+        "documents",
+        "alternatives"
+      ],
+      "action": "continue",
+      "alternatives_exhausted": false,
+      "case_id": "CL-2048",
+      "phase": "PROCESS_CASE",
+      "tokens": 1063,
+      "latency_ms": 3544
+    },
+    {
+      "conversation": "contextual",
+      "turn": 2,
+      "policy_and_extraction_passed": true,
+      "response": "I hear how frustrating this has been. Let\u2019s take it one step at a time.\n\nI can suggest asking your insurer\u2019s member support for a human claims representative. This demo cannot transfer you or create a support request. You can continue here if you prefer.",
+      "emotion": "frustrated",
+      "topics": [
+        "alternatives"
+      ],
+      "action": "human",
+      "alternatives_exhausted": true,
+      "case_id": "CL-2048",
+      "phase": "PROCESS_CASE",
+      "tokens": 1297,
+      "latency_ms": 2588
+    }
+  ],
+  "limitations": "12-call synthetic acceptance, not statistical reliability, production identity assurance, or real transfer/delivery. Fixed controller clock; provider date inference was not pinned by a clock in the prompt."
+}
