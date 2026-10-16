@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import * as Tabs from '@radix-ui/react-tabs'
 import * as Dialog from '@radix-ui/react-dialog'
 import { ArrowDown, ArrowRight, ArrowUp, Check, CheckCheck, CheckCircle2, ChevronDown, ChevronRight, Circle, ClipboardList, FlaskConical, Info, Loader2, LockKeyhole, Mail, MessageSquare, PanelRightClose, PanelRightOpen, Plus, RotateCcw, ShieldCheck, X } from 'lucide-react'
+import { ModelSettings } from './ModelSettings'
 import { Button } from './components/Button'
 import { api, ApiError, type Session, type Event, type Scenario, type Evaluation } from './api'
 
@@ -71,6 +72,7 @@ export default function App() {
   const [pending, setPending] = useState<Pending | null>(null)
   const [inspector, setInspector] = useState(true)
   const [mobileInspector, setMobileInspector] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const [demoOpen, setDemoOpen] = useState(false)
   const [demo, setDemo] = useState<{ opening: string; description: string } | null>(null)
   const [nearBottom, setNearBottom] = useState(true)
@@ -80,6 +82,7 @@ export default function App() {
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const sendingRef = useRef(false)
   const mobileInspectorButton = useRef<HTMLButtonElement>(null)
+  const settingsButton = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
     let active = true
@@ -164,7 +167,7 @@ export default function App() {
   return <Tabs.Root value={tab} onValueChange={setTab} className="app-shell">
     <header className="app-header"><a href="/" aria-label="ClaimFlow home"><Brand/></a><span className="header-divider"/><span className="workspace-label">Claims support workspace</span>
       <Tabs.List className="main-tabs" aria-label="Workspace"><Tabs.Trigger value="playground"><MessageSquare size={16}/><span>Agent Playground</span></Tabs.Trigger><Tabs.Trigger value="lab"><FlaskConical size={16}/><span>Evaluation Lab</span></Tabs.Trigger></Tabs.List>
-      <span className="demo-label"><span/>Synthetic data</span>
+      <Button ref={settingsButton} variant="ghost" size="sm" disabled={!session||busy||!!pending} onClick={()=>setSettingsOpen(true)}>Model settings</Button><span className="demo-label"><span/>Synthetic data</span>
     </header>
     <Tabs.Content value="playground" className="workspace" forceMount hidden={tab!=='playground'}>
       <div className="page-heading"><div><div className="eyebrow">AGENT PLAYGROUND</div><h1>Claims support</h1><p>A clear answer. A considered next step.</p></div><div className="heading-actions"><span className="model-label"><span className={'connection-dot '+(session?.model==='scripted'?'offline':'')}/>{session?.model === 'scripted' ? 'Offline · Scripted' : session?.model ? 'Live · ' + session.model : 'Connecting'}</span><Button variant="outline" size="sm" disabled={busy} onClick={reset}><Plus size={15}/>New session</Button></div></div>
@@ -195,6 +198,7 @@ export default function App() {
       </main>
     </Tabs.Content>
     <Tabs.Content value="lab" className="workspace lab-workspace" forceMount hidden={tab!=='lab'}><EvaluationLab session={session}/></Tabs.Content>
+    {settingsOpen&&session&&<ModelSettings session={session} onApplied={s=>{setSession(s);setText('');setPending(null);setError('')}} onBusy={value=>{sendingRef.current=value;setBusy(value)}} onClose={()=>setSettingsOpen(false)} restoreFocus={()=>settingsButton.current?.focus()}/>}
     <footer className="app-footer"><span><ShieldCheck size={12}/>A support demo with deterministic SOP controls</span><span>Synthetic identity matching · Simulated actions</span></footer>
     <Dialog.Root open={mobileInspector} onOpenChange={setMobileInspector}><Dialog.Portal><Dialog.Overlay className="dialog-overlay"/><Dialog.Content className="inspector-drawer" onCloseAutoFocus={event=>{event.preventDefault();mobileInspectorButton.current?.focus()}}><Dialog.Title className="sr-only">Workflow inspector</Dialog.Title><Dialog.Description className="sr-only">Verification, context, and sanitized policy decisions</Dialog.Description><Dialog.Close className="dialog-close" aria-label="Close workflow inspector"><X size={20}/></Dialog.Close>{session&&<Inspector session={session}/>}</Dialog.Content></Dialog.Portal></Dialog.Root>
     <Dialog.Root open={demoOpen} onOpenChange={setDemoOpen}><Dialog.Portal><Dialog.Overlay className="dialog-overlay"/><Dialog.Content className="demo-dialog"><span className="eyebrow">SYNTHETIC DEMO SCENARIO</span><Dialog.Title>Meet Margaret.</Dialog.Title><Dialog.Description>Explore the complete workflow with a fictional policyholder. These details are supplied test data, not real credentials.</Dialog.Description>{demo?<><p className="demo-context">{demo.description}</p><div className="demo-opening">{demo.opening}</div><Button onClick={()=>{setText(demo.opening);setDemoOpen(false);setTimeout(()=>inputRef.current?.focus(),0)}}>Use this opening message<ArrowRight size={16}/></Button></>:<p role="status">Loading synthetic scenario…</p>}<Dialog.Close className="dialog-close" aria-label="Close demo scenario"><X size={20}/></Dialog.Close></Dialog.Content></Dialog.Portal></Dialog.Root>

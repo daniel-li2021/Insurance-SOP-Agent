@@ -1,11 +1,11 @@
-# V1 implementation
+# ClaimFlow implementation — V1 core and V2 providers
 
 One FastAPI process serves a React/Vite build and same-origin JSON API. SQLite stores encrypted session state; no framework, vector store, queue, or external database is required. The six original fixtures remain unchanged.
 
 ## Turn boundary
 
 1. `main.py` checks session ownership, CSRF, origin, request size, deduplication, version, and a durable 45-second lease. It applies persistent rate limits and reserves the model budget before live calls.
-2. `interpreter.py` uses OpenAI Responses structured parsing into the Pydantic `Interpretation` schema, with a 30-second overall timeout, no automatic provider retries, no tools, and `store=False`. The endpoint is fixed to OpenAI; callers cannot select endpoints/models. Only the current message and bounded safe context are sent. The offline adapter is a limited regex parser; policy evaluations use explicit scripted interpretations.
+2. `interpreter.py` uses OpenAI Responses structured parsing into the Pydantic `Interpretation` schema, with a 30-second overall timeout, no automatic provider retries, no tools, and `store=False`. V2 adds the curated provider adapters described below. Callers select only catalog models; all endpoints are fixed. Only the current message and bounded safe context are sent. The offline adapter is a limited regex parser; policy evaluations use explicit scripted interpretations.
 3. `identity.py` accepts candidates only when their values have matching source evidence in the current message. Normalization handles explicit dates, phone formatting, case/space differences, and approved stored aliases. Three distinct categories must match one unique person with no active contradiction. Failed verification exposes no partial matching count or fields, and transcript redaction uses supplied extraction/generic patterns rather than fixture membership. Policy number locates/restricts a candidate but never contributes a match.
 4. `controller.py` merges provenance, retains early topics/hints, evaluates authorization, resolves authorized cases, renders selected factual guidance, and creates versioned summaries. It can advance multiple ordered transitions in a turn. Emotion selects a short empathetic preamble. Model output cannot declare identity, grant authority, choose arbitrary actions, or generate factual prose.
 5. `fixtures.py` validates actual fixture models and is the sole claim read boundary. Every session read checks identity, expiry, party ownership, and representative grant scope. Models and the inspector do not receive the fixture dataset. The explicit synthetic demo-starter endpoint exposes only the assignment's fictional starting identity for reviewer exploration; it is not an account lookup endpoint.
@@ -31,7 +31,7 @@ Claim-specific facts and deadlines take precedence over generic follow-up guidan
 
 React owns rendering and draft input; the backend owns all workflow state. Radix implements main tabs, evaluation tabs, and dialogs, including explicit focus restoration for the mobile inspector. The composer remains fixed while chat and desktop inspector scroll independently. The browser uses the server timestamp to expire visible authorization/consent offers; server checks are authoritative. It immediately hides protected content when authorization expires or a request returns 401, even if its refresh cannot reach the server. Retry retains the request ID and message, and a conflict refreshes the expected state version.
 
-`evaluation.py` is shared by pytest, the CLI, and the Lab. The 23 scenarios check event deltas, explicit action outcomes, locked public views, and deduplication per preview. Runs are isolated, fixed-clock policy tests with sanitized traces and expected/observed assertions. They do not call the live model or modify a customer session. `scripts/evaluate_live.py` is a separate six-call opt-in probe. Live quality is not inferred from deterministic results.
+`evaluation.py` is shared by pytest, the CLI, and the Lab. The 23 scenarios check event deltas, explicit action outcomes, locked public views, and deduplication per preview. Runs are isolated, fixed-clock policy tests with sanitized traces and expected/observed assertions. They do not call the live model or modify a customer session. `scripts/evaluate_live.py` retains the original six-call opt-in probe; `scripts/evaluate_v1_acceptance.py` contains the separate 12-call acceptance suite. Live quality is not inferred from deterministic results.
 
 ## Operational limits
 

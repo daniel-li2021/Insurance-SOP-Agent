@@ -20,9 +20,19 @@ cp -n .env.example .env
 
 Open [localhost:8000](http://localhost:8000). Choose **Try a guided scenario** to insert Margaret's supplied synthetic opening, or type a conversation. Review the summary to explicitly Send a simulation or Skip. No real email is delivered.
 
-For live interpretation, set `OPENAI_API_KEY` and `MODEL_MODE=live` in the ignored `.env`; `OPENAI_MODEL=gpt-6.1-sol` is the tested default. `gpt-6-luna` is configurable, but was not evaluated here. If `MODEL_MODE` is omitted, a configured key selects live mode; without a key, the default is scripted. `MODEL_MODE=scripted` never calls a model and has a deliberately limited parser. Mode is always visible. Restart the backend after configuration changes.
+For live interpretation, set `OPENAI_API_KEY` and `MODEL_MODE=live` in the ignored `.env`; `OPENAI_MODEL=gpt-6.1-sol` is the tested default. The curated V2 catalog accepts only supported model IDs; arbitrary names and endpoints are rejected. If `MODEL_MODE` is omitted, a configured key selects live mode; without a key, the default is scripted. `MODEL_MODE=scripted` never calls a model and has a deliberately limited parser. Mode is always visible. Restart the backend after configuration changes.
 
 For frontend development, run `npm --prefix frontend run dev` alongside the backend. The Vite server proxies `/api`; use port 5173 and keep its origin in `ALLOWED_ORIGINS`.
+
+## Model settings (V2)
+
+Open **Model settings** from the header. Choose OpenAI, Anthropic Claude, Google Gemini, or offline mode. The existing backend OpenAI key/model remains the local default. Optional `ANTHROPIC_API_KEY` and `GEMINI_API_KEY` environment variables make demo credentials available for those providers. No frontend environment variables contain credentials.
+
+The catalog is intentionally small: `gpt-6.1-sol`, `claude-sonnet-5-5`, and `gemini-3.8-flash`. OpenAI has live acceptance evidence. Claude/Gemini have mocked contract evidence and require live validation with your provider account; the dialog labels that distinction. There is no silent provider fallback.
+
+Choose **Bring Your Own Key** to enter a provider key in the password field. **Validate & apply** makes one small paid structured-output call with an empty synthetic context; success starts fresh verification and clears the old conversation/summary. Failure keeps the current workflow. Switching is blocked during another operation; another browser tab may need a refresh before applying. The key is cleared from the input, excluded from responses/logs/model context, and encrypted with backend session state. It is never saved in browser storage or bundled frontend code. Re-enter it for revalidation. **New session** removes the session row/key and returns to the backend default. Session retention/backup limits still apply; use local loopback or HTTPS.
+
+Official key setup: [OpenAI](https://platform.openai.com/api-keys), [Anthropic](https://platform.claude.com/settings/keys), [Google AI Studio](https://aistudio.google.com/apikey). Provider account access, billing and model availability can differ. Credential rejection, quota/rate limits, unavailable models, malformed output and timeouts produce safe errors without exposing provider bodies or changing SOP state. All live traffic, including BYOK and connection probes, shares the existing concurrency/rate/token budgets.
 
 ## Docker
 
@@ -30,7 +40,7 @@ For frontend development, run `npm --prefix frontend run dev` alongside the back
 docker compose up --build
 ```
 
-Compose reads `.env`, binds only to local port 8000, and persists sessions in a named volume. Keep `DATA_DIR=/app/data` inside the container. The multi-stage build excludes `.env` and runs the backend as a nonroot user. The Linux/ARM64 image and Compose runtime were verified on Docker Desktop, including nine browser checks and encrypted session recovery after container restart. See [review evidence](docs/VALIDATION.md#independent-review-and-docker-verification).
+Compose reads `.env`, binds only to local port 8000, and persists sessions in a named volume. Keep `DATA_DIR=/app/data` inside the container. The multi-stage build excludes `.env` and runs the backend as a nonroot user. The Linux/ARM64 image and Compose runtime were verified on Docker Desktop, including nine browser checks and encrypted session recovery after container restart. See [current V2 evidence](docs/VALIDATION.md#v2-validation--october-16-2026).
 
 ## Verify
 
