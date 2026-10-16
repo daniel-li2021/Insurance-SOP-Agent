@@ -2,7 +2,7 @@
 import re
 import time
 from datetime import datetime
-from openai import AsyncOpenAI
+from openai import AsyncOpenAI, APIStatusError
 from .models import Candidate, Interpretation, Session
 
 PROMPT_VERSION = 'claimflow-extract-v1'
@@ -28,6 +28,12 @@ For unrelated questions use out_of_scope, but still extract useful explicit iden
 '''
 
 
+def safe_context(state: Session):
+    return {'phase': state.phase, 'intent': state.intent, 'case_hints': state.hints,
+            'identity_fields_captured': list(state.identity), 'emotion': state.emotion,
+            'last_assistant_question': state.messages[-1].text if state.messages else ''}
+
+
 class ModelFailure(Exception):
     pass
 
@@ -40,9 +46,7 @@ class LiveInterpreter:
         self.client = AsyncOpenAI(api_key=key, base_url='https://api.openai.com/v1', timeout=25, max_retries=0)
 
     async def interpret(self, text: str, state: Session) -> tuple[Interpretation, dict]:
-        context = {'phase': state.phase, 'intent': state.intent, 'case_hints': state.hints,
-                   'identity_fields_captured': list(state.identity), 'emotion': state.emotion,
-                   'last_assistant_question': state.messages[-1].text if state.messages else ''}
+        context = safe_context(state)
         started = time.monotonic()
         try:
             response = await self.client.responses.parse(
@@ -53,8 +57,13 @@ class LiveInterpreter:
             )
             if response.output_parsed is None:
                 raise ModelFailure('No validated interpretation')
-            return response.output_parsed, {'tokens': response.usage.total_tokens if response.usage else 0,
+            tokens = response.usage.total_tokens if response.usage else 0
+            if not 0 < tokens <= 12000: raise ModelFailure('Invalid token usage')
+            return Interpretation.model_validate(response.output_parsed.model_dump(), strict=True), {'tokens': tokens,
                                              'latency_ms': round((time.monotonic() - started) * 1000)}
+        except APIStatusError as error:
+            from .providers import provider_error
+            raise ModelFailure(provider_error(error.status_code)) from None
         except Exception:
             # Provider exceptions can contain request data; expose only this stable error.
             raise ModelFailure('Interpretation unavailable') from None

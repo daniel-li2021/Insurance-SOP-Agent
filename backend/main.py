@@ -7,13 +7,16 @@ from typing import Literal
 from uuid import UUID
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import Field
 from .controller import Controller
 from .fixtures import Fixtures, ROOT
 from .interpreter import LiveInterpreter, ScriptedInterpreter, ModelFailure
-from .models import StrictModel
+from .models import StrictModel, Session
+from .settings import Settings, SettingsRequest
+from .providers import validate_selection
 from .store import Store, Conflict, Limited
 
 
@@ -37,7 +40,9 @@ def create_app(directory: Path | None = None, interpreter=None, clock=time.time)
     if interpreter is None:
         if mode == 'live':
             if not os.getenv('OPENAI_API_KEY'): raise ValueError('Live mode requires OPENAI_API_KEY')
-            interpreter = LiveInterpreter(os.environ['OPENAI_API_KEY'], os.getenv('OPENAI_MODEL', 'gpt-6.1-sol'))
+            model = os.getenv('OPENAI_MODEL', 'gpt-6.1-sol')
+            validate_selection('openai', model)
+            interpreter = LiveInterpreter(os.environ['OPENAI_API_KEY'], model)
         else:
             interpreter = ScriptedInterpreter()
     production = os.getenv('APP_ENV') == 'production'
@@ -48,6 +53,8 @@ def create_app(directory: Path | None = None, interpreter=None, clock=time.time)
     app = FastAPI(title='ClaimFlow', docs_url=None if production else '/api/docs', redoc_url=None)
     app.state.store, app.state.controller, app.state.interpreter = store, controller, interpreter
     model_slots = asyncio.Semaphore(2)
+    settings = Settings(interpreter)
+    app.state.settings = settings
 
     @app.middleware('http')
     async def guard(request: Request, call_next):
@@ -74,6 +81,11 @@ def create_app(directory: Path | None = None, interpreter=None, clock=time.time)
         response.headers['Referrer-Policy'] = 'no-referrer'
         response.headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
         return response
+
+    @app.exception_handler(RequestValidationError)
+    async def validation_handler(request, exc):
+        # FastAPI's default echoes rejected input, which can contain a BYOK secret.
+        return JSONResponse({'detail': 'Invalid request. Check required fields and supported values.'}, status_code=422)
 
     @app.exception_handler(Conflict)
     async def conflict_handler(request, exc): return JSONResponse({'detail': str(exc)}, status_code=409)
@@ -104,7 +116,55 @@ def create_app(directory: Path | None = None, interpreter=None, clock=time.time)
         return cookie, state, csrf
 
     def view(state, csrf):
-        return {**controller.view(state, clock()), 'csrf':csrf}
+        return {**controller.view(state, clock()), 'csrf':csrf, 'model': (state.model_settings or settings.default).model}
+
+    async def interpret(selected, text, state):
+        if model_slots.locked(): raise Limited('The language service is busy. Please retry in a moment.')
+        live = selected.name != 'scripted'
+        reserved_at = clock()
+        if live: store.reserve_tokens(12000, int(os.getenv('DAILY_TOKEN_LIMIT', '200000')), reserved_at)
+        try:
+            async with model_slots:
+                result, usage = await asyncio.wait_for(selected.interpret(text, state), timeout=30)
+            if live: store.settle_tokens(12000, usage['tokens'], reserved_at)
+            return result, usage
+        finally:
+            if selected is not interpreter and isinstance(selected, LiveInterpreter):
+                await selected.client.close()
+
+    @app.get('/api/settings')
+    def model_settings(request: Request):
+        _, state, _ = session(request)
+        return settings.public(state)
+
+    @app.post('/api/settings')
+    async def update_settings(payload: SettingsRequest, request: Request):
+        cookie, _, csrf = session(request, True)
+        fingerprint = store.fingerprint('settings:' + payload.model_dump_json())
+        # SecretStr intentionally masks JSON output, so bind the actual key via HMAC too.
+        if payload.api_key: fingerprint = store.fingerprint(fingerprint + payload.api_key.get_secret_value())
+        state, lease = store.acquire(cookie, str(payload.request_id), payload.version, fingerprint, clock())
+        if lease is None: return {'session': view(state, csrf), 'settings': settings.public(state)}
+        try:
+            store.limit('settings:' + client_key(request), 10, 600, clock())
+            candidate = settings.candidate(payload)
+            probe = Session(model=candidate.model, model_settings=candidate)
+            selected = settings.interpreter(probe)
+            try:
+                await interpret(selected, 'Connection check. No claim or identity request.', Session())
+            except (ModelFailure, TimeoutError) as error:
+                detail = str(error) if isinstance(error, ModelFailure) else 'Connection timed out. Please retry.'
+                raise HTTPException(503, detail) from None
+            candidate.validated_at = clock()
+            # A validated switch resets workflow/consent; anti-abuse counters remain.
+            fresh = Session(version=state.version, turns=state.turns,
+                            verification_attempts=state.verification_attempts,
+                            model=candidate.model, model_settings=candidate)
+            fresh.event('MODEL_CHANGED', 'Model connection validated. Fresh identity verification required.', clock())
+            store.commit(cookie, lease, str(payload.request_id), fingerprint, fresh, clock())
+            return {'session': view(fresh, csrf), 'settings': settings.public(fresh)}
+        finally:
+            store.release(cookie, lease)
 
     @app.get('/api/health')
     def health():
@@ -130,7 +190,6 @@ def create_app(directory: Path | None = None, interpreter=None, clock=time.time)
     @app.get('/api/session')
     def resume(request: Request):
         _, state, csrf = session(request)
-        state.model = interpreter.name
         return view(state, csrf)
 
     @app.post('/api/turn')
@@ -146,18 +205,13 @@ def create_app(directory: Path | None = None, interpreter=None, clock=time.time)
             if state.verification_attempts >= 6 and not state.party_id:
                 raise Limited('Identity attempt limit reached. Contact member support or start a new synthetic scenario later.')
             store.limit('turn:' + client_key(request), 30, 600, clock())
-            state.model = interpreter.name
-            if model_slots.locked():
-                raise Limited('The language service is busy. Please retry in a moment.')
-            if interpreter.name != 'scripted':
-                store.reserve_tokens(12000, int(os.getenv('DAILY_TOKEN_LIMIT', '200000')), clock())
+            selected = settings.interpreter(state)
+            state.model = selected.name
             try:
-                async with model_slots:
-                    interpreted, usage = await asyncio.wait_for(interpreter.interpret(payload.text, state), timeout=30)
+                interpreted, usage = await interpret(selected, payload.text, state)
             except (ModelFailure, TimeoutError):
                 # Do not persist the raw failed input or advance workflow state.
                 raise HTTPException(503, 'The language service is unavailable. Your session is safe; retry your message.') from None
-            if interpreter.name != 'scripted': store.settle_tokens(12000, usage['tokens'], clock())
             state.event('INTERPRETED', f'{usage["latency_ms"]} ms · {usage["tokens"]} tokens · structured interpretation; policy decided by code.', clock())
             controller.answer(state, payload.text, interpreted, clock(), str(payload.request_id))
             store.commit(cookie, lease, str(payload.request_id), fingerprint, state, clock())

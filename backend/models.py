@@ -63,6 +63,15 @@ class Summary(StrictModel):
     receipt: str | None = None
 
 
+class ModelSettings(StrictModel):
+    provider: Literal['openai', 'anthropic', 'gemini', 'scripted']
+    model: str
+    credential_source: Literal['demo', 'byok'] = 'demo'
+    # Encrypted with the session; never included in controller/public views.
+    api_key: str | None = Field(default=None, repr=False)
+    validated_at: float | None = None
+
+
 class Session(StrictModel):
     version: int = 0
     phase: Phase = 'VERIFY_ID'
@@ -93,6 +102,7 @@ class Session(StrictModel):
     summary: Summary | None = None
     turns: int = 0
     model: str = 'scripted'
+    model_settings: ModelSettings | None = None
 
     def event(self, code: str, detail: str, now: float, refs: list[str] | None = None):
         self.events.append(Event(sequence=len(self.events) + 1, code=code, detail=detail,
