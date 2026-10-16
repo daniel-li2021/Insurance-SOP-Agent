@@ -4,7 +4,7 @@ import re
 import uuid
 from datetime import datetime, timezone
 from .fixtures import Claim, Fixtures
-from .identity import merge_identity, verify
+from .identity import merge_identity, supported, verify
 from .models import Interpretation, Message, Session, Summary
 
 AUTH_SECONDS = 900
@@ -23,8 +23,11 @@ class Controller:
         self.f = fixtures
 
     def expire(self, s: Session, now: float):
-        grant_expired = s.representative and s.grant and s.grant.get('expires_at', 0) <= now
-        if s.party_id and (s.auth_until <= now or grant_expired):
+        grant = s.grant or {}
+        grant_invalid = s.representative and not (
+            grant.get('principal_verified') and grant.get('party_id') == s.party_id and
+            grant.get('expires_at', 0) > now and 'claims:read' in grant.get('scopes', []))
+        if s.party_id and (s.auth_until <= now or grant_invalid):
             s.party_id = None
             s.auth_until = 0
             s.case_id = None
@@ -38,6 +41,10 @@ class Controller:
             s.discussed_by_case = {}
             s.context_notes = []
             s.pending_topics = []
+            s.hints = {}
+            s.intent = 'none'
+            s.unresolved = []
+            s.grant = None
             s.transition('VERIFY_ID', now)
             s.event('AUTH_EXPIRED', 'Please verify again before viewing protected records.', now)
         if s.summary and s.summary.status in ('offered', 'failed', 'timeout') and s.summary.expires_at <= now:
@@ -49,13 +56,15 @@ class Controller:
             if c.source:
                 text = re.sub(re.escape(c.source), f'[{c.field} provided]', text, flags=re.I)
         # Redaction does not depend solely on successful model extraction.
-        for p in self.f.people:
-            for value in [p.name, *p.name_aliases, p.email, *p.email_aliases, str(p.dob), p.phone, p.id_last4]:
-                text = re.sub(re.escape(value), '[identity detail]', text, flags=re.I)
+        # Never use fixture membership to decide what to redact: that is another lookup oracle.
+        text = re.sub(r'(\b(?:my name is|full name(?: is|:)|name is)\s+)[^,;.!?\n]+', r'\1[name provided]', text, flags=re.I)
         text = re.sub(r'[\w.+-]+@[\w.-]+\.[a-zA-Z]{2,}', '[email provided]', text)
         text = re.sub(r'\b\d{4}-\d{2}-\d{2}\b|\b\d{1,2}/\d{1,2}/\d{4}\b', '[date provided]', text)
+        text = re.sub(r'\b(?:January|February|March|April|May|June|July|August|September|October|November|December) \d{1,2},? \d{4}\b', '[date provided]', text, flags=re.I)
         text = re.sub(r'(?<!\d)(?:\+?1[ -]?)?\(?\d{3}\)?[ .-]?\d{3}[ .-]?\d{4}(?!\d)', '[phone provided]', text)
-        text = re.sub(r'((?:last four|last 4|ssn)\s*(?:is|:)?\s*)\d{4}\b', r'\1[redacted]', text, flags=re.I)
+        text = re.sub(r'\b\d{3}-\d{2}-\d{4}\b', '[SSN provided]', text)
+        text = re.sub(r'((?:last\s*(?:four|4)(?:\s+digits)?|ssn|national[- ]?id)\s*(?:is|are|:)?\s*)\d{4}\b', r'\1[redacted]', text, flags=re.I)
+        text = re.sub(r'\bPOL-\d+\b', '[policy number provided]', text, flags=re.I)
         return text
 
     def answer(self, s: Session, text: str, i: Interpretation, now: float, message_id: str) -> Session:
@@ -68,11 +77,11 @@ class Controller:
             return self.reply(s, '', 'Please use Send simulated email or Skip on the current preview. Your chat message alone does not authorize a send.', now)
         was_authorized = bool(s.party_id)
         # Caller role is sticky. A model omission cannot turn a relative into a policyholder.
-        rep_signal = bool(re.search(r'on behalf|my (?:mother|mom|father|dad)|her son|as (?:a |her )?representative|i.m david', text, re.I))
+        rep_signal = bool(re.search(r'on behalf|my (?:mother|mom|father|dad|wife|husband|spouse|partner|daughter|son|sister|brother|aunt|uncle|grandmother|grandfather)\b|her son|as (?:a |her )?representative|i.m david', text, re.I))
+        rep_signal |= any(c.subject == 'policyholder' and supported(c, text) for c in i.identity)
         if i.representative or rep_signal:
             s.representative = True
-        if s.summary and s.summary.status != 'simulated_sent':
-            s.summary = None
+        s.summary = None
         if s.phase == 'POST_PROCESS':
             s.transition('PROCESS_CASE' if s.case_id else 'RESOLVE_INTENT', now)
         merge_identity(s, i.identity, text, message_id, i.correction)
@@ -97,7 +106,7 @@ class Controller:
             if party:
                 s.party_id = party
                 s.auth_until = now + AUTH_SECONDS
-            s.event('IDENTITY_EVALUATED', f'{min(len(matches), 3)} of 3 distinct fields matched; policy numbers do not count.', now)
+            s.event('IDENTITY_EVALUATED', 'Identity verified.' if party else 'Verification incomplete; no partial match results disclosed.', now)
         s.emotion = i.emotion
         if i.intent not in ('none', 'out_of_scope'):
             s.intent = i.intent
@@ -152,18 +161,11 @@ class Controller:
         s.scope_streak = 0
         if not s.party_id or s.auth_until <= now:
             s.transition('VERIFY_ID', now)
-            missing = [x for x in ('name', 'dob', 'phone', 'email', 'id_last4') if x not in s.identity]
-            labels = {'name': 'full name', 'dob': 'date of birth (YYYY-MM-DD)', 'phone': 'phone number', 'email': 'email', 'id_last4': 'SSN or approved national-ID last four'}
             if s.verification_attempts >= 6:
                 s.human_offered = True
                 return self.reply(s, prefix, 'I’m unable to verify these details. Please contact member support for help with identity verification. Claim access remains locked; no transfer has occurred.', now)
-            if s.conflicts or (len(s.identity) >= 3 and len(s.matched) < len([k for k in s.identity if k != 'policy_number'])):
-                msg = 'The details provided don’t yet establish a consistent match. Please clarify or explicitly correct a detail, or provide a different approved field. I cannot reveal the expected values.'
-                s.unresolved = ['Clarify identity details']
-            else:
-                needed = max(1, 3 - len(s.matched))
-                msg = f'To protect claim information, I need three distinct matching identity fields. Please provide {needed} more: ' + ', '.join(labels[x] for x in missing) + '. A policy number can locate a record but does not count toward verification.'
-                s.unresolved = ['Complete identity verification']
+            msg = 'To protect claim information, I need three distinct matching identity fields. Verification is not complete. Please provide or explicitly correct your full name, date of birth (YYYY-MM-DD), phone, email, or SSN / approved national-ID last four. A policy number can locate a record but does not count toward verification. I cannot reveal which details match.'
+            s.unresolved = ['Complete identity verification']
             if s.hints: msg += ' I’ve kept your claim question for after verification.'
             return self.reply(s, prefix, msg, now)
         s.auth_until = now + AUTH_SECONDS
@@ -317,13 +319,15 @@ class Controller:
         self.expire(s, now)
         authorized = bool(s.party_id and s.auth_until > now)
         return {'version': s.version, 'phase': s.phase, 'verified': authorized,
-                'verification': {'count': min(len(s.matched), 3), 'required': 3,
+                'verification': {'count': 3 if authorized else 0, 'required': 3,
                                  'fields': s.matched if authorized else [], 'representative': s.representative},
                 'intent': s.intent, 'case_id': s.case_id if authorized else None,
                 'choices': s.choices if authorized else [], 'emotion': s.emotion,
                 'human_offered': s.human_offered, 'unresolved': s.unresolved,
                 'messages': [m.model_dump() for m in s.messages if authorized or not m.protected],
-                'events': [e.model_dump() for e in s.events if authorized or not e.references],
-                'summary': s.summary.model_dump() if authorized and s.summary else None,
+                'events': [{**e.model_dump(exclude={'party_id'}), **({'detail': 'Identity evaluated; partial match results are private.'}
+                            if e.code == 'IDENTITY_EVALUATED' else {})}
+                           for e in s.events if not e.references or (authorized and e.party_id == s.party_id)],
+                'summary': s.summary.model_dump() if authorized and s.summary and s.phase == 'POST_PROCESS' else None,
                 'model': s.model, 'fixture_version': self.f.version,
                 'auth_expires_at': s.auth_until if authorized else None, 'server_time': now}

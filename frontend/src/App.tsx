@@ -37,7 +37,7 @@ function Inspector({ session }: { session: Session }) {
     <section className="inspector-section">
       <div className="section-label"><ShieldCheck size={16}/><h3>Identity & access</h3><span className={session.verified ? 'status-good' : 'muted'}>{session.verified ? 'Verified' : 'Required'}</span></div>
       <div className="verification-meter">{[0,1,2].map(n => <span key={n} className={n < session.verification.count ? 'filled' : ''}/>)}</div>
-      <p className="small"><strong>{session.verification.count} of 3</strong> distinct identity fields matched</p>
+      <p className="small">{session.verified ? <><strong>3 of 3</strong> distinct identity fields matched</> : <>Three matching fields required. Partial results stay private.</>}</p>
       <p className="micro muted">{session.verification.representative ? 'Representative identity and a scoped grant are also required.' : 'Policy numbers help locate records. They do not count toward verification.'}</p>
       {session.verified && <div className="access-note"><CheckCheck size={14}/> Read access scoped to this policyholder</div>}
     </section>
@@ -55,6 +55,12 @@ function Inspector({ session }: { session: Session }) {
 }
 
 type Pending = { path: string; body: Record<string,unknown>; text?: string }
+
+function lockedSession(s: Session): Session {
+  return { ...s, verified:false, phase:'VERIFY_ID', case_id:null, choices:[], summary:null, auth_expires_at:null,
+    verification:{ ...s.verification, count:0, fields:[] }, intent:'none', unresolved:['Complete identity verification'],
+    messages:s.messages.filter(m=>!m.protected), events:s.events.filter(e=>!e.references.length) }
+}
 
 export default function App() {
   const [session, setSession] = useState<Session | null>(null)
@@ -93,8 +99,11 @@ export default function App() {
     const tick = () => {
       const now = Date.now()/1000 + skew
       setRemaining(Math.max(0, Math.ceil((session.summary?.expires_at || 0)-now)))
-      if ((session.auth_expires_at && now >= session.auth_expires_at) ||
-          (session.summary && ['offered','failed','timeout'].includes(session.summary.status) && now >= session.summary.expires_at)) void refresh().catch(() => {})
+      if (session.auth_expires_at && now >= session.auth_expires_at) {
+        // Hide protected content at the deadline even when the server cannot be reached.
+        setSession(current => current === session ? lockedSession(current) : current)
+        void refresh().catch(() => {})
+      } else if (session.summary && ['offered','failed','timeout'].includes(session.summary.status) && now >= session.summary.expires_at) void refresh().catch(() => {})
     }
     tick()
     const interval = window.setInterval(tick, 1000)
@@ -119,6 +128,9 @@ export default function App() {
       inputRef.current?.focus()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Something went wrong. Please retry.')
+      if (e instanceof ApiError && e.status === 401) {
+        setSession(current => current && lockedSession(current)); setPending(null)
+      }
       if (e instanceof ApiError && e.status === 409) {
         try { const latest = await refresh(); setPending({ ...operation, body: { ...operation.body, version: latest.version } }) } catch { /* Keep explicit recovery available. */ }
       }

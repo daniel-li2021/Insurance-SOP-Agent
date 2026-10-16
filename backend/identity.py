@@ -67,5 +67,5 @@ def verify(state: Session, fixtures: Fixtures) -> tuple[str | None, list[str]]:
     eligible = [(pid, matched) for pid, matched, conflict in results if len(matched) >= 3 and not conflict and not state.conflicts]
     if len(eligible) == 1:
         return eligible[0]
-    best = max(results, key=lambda x: len(x[1]))
-    return None, best[1]
+    # Failed attempts must not reveal proximity to any stored identity.
+    return None, []

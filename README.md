@@ -30,7 +30,7 @@ For frontend development, run `npm --prefix frontend run dev` alongside the back
 docker compose up --build
 ```
 
-Compose reads `.env`, binds only to local port 8000, and persists sessions in a named volume. Keep `DATA_DIR=/app/data` inside the container. The multi-stage build excludes `.env` and runs the backend as a nonroot user. Docker is not installed in the development environment, so image execution has not been verified.
+Compose reads `.env`, binds only to local port 8000, and persists sessions in a named volume. Keep `DATA_DIR=/app/data` inside the container. The multi-stage build excludes `.env` and runs the backend as a nonroot user. The Linux/ARM64 image and Compose runtime were verified on Docker Desktop, including nine browser checks and encrypted session recovery after container restart. See [review evidence](docs/VALIDATION.md#independent-review-and-docker-verification).
 
 ## Verify
 
@@ -43,7 +43,7 @@ npx playwright install chromium
 npm run test:e2e
 ```
 
-The Lab and CLI execute the same 19 isolated scripted policy scenarios. They do not use the live model or change the Playground session. Pytest uses mock interpretation and a fixed clock. Playwright starts its own offline server on port 8001.
+The Lab and CLI execute the same 23 isolated scripted policy scenarios. They do not use the live model or change the Playground session. Pytest uses mock interpretation and a fixed clock. Playwright starts its own offline server on port 8001.
 
 Optional live-model acceptance probe, **six paid API calls**:
 
@@ -55,12 +55,12 @@ It writes a sanitized report to `data/live-evaluation.json`. The regular test su
 
 ## Important boundaries
 
-- Three distinct approved identity fields must match one party. Policy numbers do not count. Explicit stored aliases and fixture-declared national-ID last four are allowed; conflicting details require clarification/correction.
+- Before verification, no partial match counts or field results are disclosed. Three distinct approved identity fields must match one party. Policy numbers do not count. Explicit stored aliases and fixture-declared national-ID last four are allowed; conflicting details require clarification/correction.
 - David's relationship is not authorization. The public representative path stays locked. The Lab's successful representative scenario supplies a clearly labeled evaluator-only identity assertion and scoped grant; the supplied consent sequences alone establish neither representative authority nor email consent.
 - Claim access checks authorization on every repository read. The model cannot execute tools, set phases, approve identities, send email, or alter claims. Factual responses and summaries are rendered from supplied records/guidance.
 - The January 2026 denial's recorded March 18 appeal deadline has passed. Generic timing guidance cannot override it. No late appeal, payment, document receipt, accepted substitute, or human transfer is promised.
-- Summary sending is simulated, requires an explicit button, and is bound to the current preview and on-file recipient. Expiry, Skip, and additional questions invalidate the offer. Duplicate success returns the same simulated receipt.
-- Encrypted session data and its generated private key live in `DATA_DIR` (default `data/`). Retain both across restarts; changing the encryption key invalidates old sessions. Authorization expires after 15 idle minutes; sessions expire after 24 idle hours; summary offers expire after 10 minutes. Private data is removed lazily on new-session creation, not by a timed deletion service.
+- Summary sending is simulated, requires an explicit button, and is bound to the current preview and on-file recipient. Expiry and Skip invalidate the offer. Additional questions or case changes remove the current summary, including a previously simulated-sent summary; the next review requires fresh consent. Duplicate success returns the same simulated receipt.
+- Encrypted session data and its generated private key live in `DATA_DIR` (default `data/`). Retain both across restarts; changing the encryption key invalidates old sessions. Authorization expires 15 minutes after the last authorized chat turn; server sessions expire 24 hours after the last committed mutation, and the browser cookie also lasts 24 hours; summary offers expire after 10 minutes. Private data is removed lazily on new-session creation, not by a timed deletion service.
 - The backend sets HttpOnly/SameSite cookies, checks CSRF and request origins, limits input/turns/attempts, admits at most two model calls at once, and persists a daily token budget. Defaults: 40 turns/session, 120 total session mutations, 60 summary actions/client per 10 minutes, six identity-bearing attempts, 30 turns/client per 10 minutes, and 200,000 global model tokens/day with conservative reservations. Failed/uncertain model calls retain their reservation. These are demo controls, not a billing guarantee.
 
 ## Hosting
@@ -71,6 +71,7 @@ The disk limits the service to one instance and causes brief deployment downtime
 
 ## Further reading and limitations
 
+- [Independent reliability, security, and workflow review](docs/RELIABILITY_REVIEW.md)
 - [Implementation architecture and security boundaries](docs/ARCHITECTURE.md)
 - [Open-source research and reuse decisions](docs/REUSE.md) · [Third-party notices](THIRD_PARTY_NOTICES.md)
 - [Accepted proposal](docs/PROPOSAL.md) · [Original assignment](requirement.md) · [Six unchanged fixtures](insurance_claims/fixtures)

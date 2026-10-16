@@ -79,7 +79,16 @@ class ScriptedInterpreter:
             'name': r'(?:my name is|name is|i am|i.m)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3})(?=[,.!]|$|\s+(?:and|policy|dob|with|calling|my))',
         }
         for field, pattern in patterns.items():
-            m = re.search(pattern, text, re.I if field != 'name' else 0)
+            if field == 'dob':
+                # A claim/deadline date must not change identity or revoke access.
+                m = next((date for date in re.finditer(pattern, text, re.I) if
+                          re.search(r'\b(?:dob|date of birth|birth date|birthday|born)\s*(?:is|was|on|:)?\s*$', text[:date.start()], re.I) or
+                          (not state.party_id and text.strip(' .') == date.group()) or
+                          (out.correction and 'dob' in state.identity and
+                           text[:date.start()].strip().casefold() in ('actually', 'correction', 'sorry', 'i meant') and
+                           not text[date.end():].strip(' .'))), None)
+            else:
+                m = re.search(pattern, text, re.I if field != 'name' else 0)
             if m:
                 value = m.group(1) if field in ('id_last4', 'name') else m.group()
                 kind = 'national_id_last4' if 'national' in s else 'ssn_last4' if 'ssn' in s else 'unspecified'

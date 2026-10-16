@@ -51,6 +51,7 @@ class Event(StrictModel):
     at: float
     detail: str
     references: list[str] = Field(default_factory=list)
+    party_id: str | None = None
 
 
 class Summary(StrictModel):
@@ -95,7 +96,8 @@ class Session(StrictModel):
 
     def event(self, code: str, detail: str, now: float, refs: list[str] | None = None):
         self.events.append(Event(sequence=len(self.events) + 1, code=code, detail=detail,
-                                 phase=self.phase, at=now, references=refs or []))
+                                 phase=self.phase, at=now, references=refs or [],
+                                 party_id=self.party_id if refs else None))
 
     def transition(self, phase: Phase, now: float):
         if phase != self.phase:
