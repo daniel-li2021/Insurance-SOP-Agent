@@ -137,6 +137,68 @@ test('January ambiguity and explicit Skip',async({page})=>{
   await expect(page.locator('.summary-result')).toContainText('No email was sent')
 })
 
+test('workspace navigation stays in place across tabs and viewport sizes',async({page})=>{
+  await page.goto('/')
+  await expect(page.getByRole('textbox',{name:'Message ClaimFlow'})).toBeEnabled()
+  for (const viewport of [{width:1440,height:1000},{width:1200,height:900},{width:1024,height:900},{width:720,height:450},{width:390,height:844},{width:320,height:568}]) {
+    await page.setViewportSize(viewport)
+    const landmarks = [page.locator('.app-header'), page.getByRole('tab',{name:'Agent Playground',exact:true}), page.getByRole('tab',{name:'Evaluation Lab',exact:true}), page.getByRole('button',{name:'Model settings',exact:true}), page.locator('.workspace:not([hidden])')]
+    const before = await Promise.all(landmarks.map(item=>item.boundingBox()))
+    await page.getByRole('tab',{name:'Evaluation Lab',exact:true}).click()
+    for (const [n, item] of landmarks.entries()) {
+      const after = (await item.boundingBox())!
+      expect(after.x).toBeCloseTo(before[n]!.x,0)
+      expect(after.y).toBeCloseTo(before[n]!.y,0)
+      expect(after.width).toBeCloseTo(before[n]!.width,0)
+      expect(after.height).toBeCloseTo(before[n]!.height,0)
+    }
+    await expect(page.locator('.app-header .lab-mode')).toBeInViewport()
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth&&document.documentElement.scrollHeight<=innerHeight)).toBe(true)
+    await page.getByRole('tab',{name:'Evaluation Lab',exact:true}).press('ArrowLeft')
+    await expect(page.getByRole('tab',{name:'Agent Playground',exact:true})).toHaveAttribute('aria-selected','true')
+    await expect(page.getByRole('tab',{name:'Agent Playground',exact:true})).toBeFocused()
+  }
+})
+
+for (const width of [1440,390]) test(`workspace round trip preserves draft, scroll and evaluation evidence at ${width}px`,async({page})=>{
+  await page.setViewportSize({width,height:844})
+  await page.goto('/')
+  await verified(page)
+  await page.getByRole('button',{name:'Expand playground',exact:true}).click()
+  if (width===1440) await page.getByRole('button',{name:'Hide workflow inspector',exact:true}).click()
+  const input = page.getByRole('textbox',{name:'Message ClaimFlow'})
+  await input.fill('Keep this follow-up draft')
+  const conversation = page.locator('.conversation')
+  await conversation.evaluate(el=>{el.scrollTop=80;el.dispatchEvent(new Event('scroll'))})
+  const scroll = await conversation.evaluate(el=>el.scrollTop)
+  const messages = await page.locator('.message-text').allTextContents()
+  await page.getByRole('tab',{name:'Evaluation Lab',exact:true}).click()
+  const scenario = page.locator('.scenario-list button').nth(1)
+  await scenario.click()
+  const scenarioName = await scenario.textContent()
+  await page.getByRole('button',{name:'Run scenario',exact:true}).click()
+  await expect(page.getByText('All assertions passed',{exact:true})).toBeVisible()
+  await page.getByRole('tab',{name:'Decision trace',exact:true}).click()
+  await page.locator('.result-body .trace-entry').first().locator('summary').click()
+  const body = page.locator(width===1440?'.result-body':'.lab-layout')
+  await body.evaluate(el=>{el.scrollTop=100})
+  const evidenceScroll = await body.evaluate(el=>el.scrollTop)
+  await page.getByRole('tab',{name:'Agent Playground',exact:true}).click()
+  await expect(input).toHaveValue('Keep this follow-up draft')
+  await expect(page.getByRole('button',{name:'Restore playground',exact:true})).toBeVisible()
+  if (width===1440) await expect(page.getByRole('button',{name:'Show workflow inspector',exact:true})).toBeVisible()
+  expect(await conversation.evaluate(el=>el.scrollTop)).toBeCloseTo(scroll,0)
+  expect(await page.locator('.message-text').allTextContents()).toEqual(messages)
+  await page.getByRole('tab',{name:'Evaluation Lab',exact:true}).click()
+  await expect(page.locator('.scenario-list button.selected')).toHaveText(scenarioName!)
+  await expect(page.getByRole('tab',{name:'Decision trace',exact:true})).toHaveAttribute('aria-selected','true')
+  await expect(page.locator('.result-body .trace-entry').first()).toHaveAttribute('open','')
+  expect(await body.evaluate(el=>el.scrollTop)).toBeCloseTo(evidenceScroll,0)
+  await page.screenshot({path:`../data/workspace-switch/lab-${width}.png`,fullPage:true})
+  await page.getByRole('tab',{name:'Agent Playground',exact:true}).click()
+  await page.screenshot({path:`../data/workspace-switch/playground-${width}.png`,fullPage:true})
+})
+
 test('Evaluation Lab replays actual policy and resets results',async({page})=>{
   await page.goto('/')
   await page.getByRole('tab',{name:'Evaluation Lab',exact:true}).click()

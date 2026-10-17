@@ -179,11 +179,12 @@ export default function App() {
 
   async function execute(operation: Pending) {
     if (!session || sendingRef.current) return false
-    ++sessionEpoch.current
+    const epoch = ++sessionEpoch.current
     sendingRef.current = true; setBusy(true); setError(''); setPending(operation)
     if (operation.text) setText('')
     try {
       const next = await api<Session>(operation.path, operation.body, session.csrf)
+      if (epoch !== sessionEpoch.current) return false
       const original = operation.text ?? operation.displayText
       const id = operation.body.request_id
       if (transcriptScope(next) !== scope) setSubmitted(null)
@@ -195,6 +196,7 @@ export default function App() {
       inputRef.current?.focus()
       return true
     } catch (e) {
+      if (epoch !== sessionEpoch.current) return false
       if (operation.text) setText(operation.text)
       setError(e instanceof Error ? e.message : 'Something went wrong. Please retry.')
       if (e instanceof ApiError && e.status === 401) {
@@ -206,6 +208,7 @@ export default function App() {
         setSession(current => current && lockedSession(current))
         try {
           const latest = await refresh()
+          if (epoch !== sessionEpoch.current) return false
           if (latest.csrf !== session.csrf) {
             setPending(null)
             setError('The session was replaced in another tab. The current session is now loaded. Review your draft before sending again.')
@@ -213,10 +216,12 @@ export default function App() {
             setPending({ ...operation, body: { ...operation.body, version: latest.version } })
             setError('The current session has been synchronized. Review the conversation, then retry your action.')
           }
-        } catch { setPending(null) /* Keep explicit recovery available. */ }
+        } catch { if (epoch === sessionEpoch.current) setPending(null) /* Keep explicit recovery available. */ }
       }
       return false
-    } finally { setBusy(false); sendingRef.current = false }
+    } finally {
+      if (epoch === sessionEpoch.current) { setBusy(false); sendingRef.current = false }
+    }
   }
 
   function send() {
@@ -255,6 +260,12 @@ export default function App() {
       if (e instanceof ApiError && e.status === 401) { setSubmitted(null); setSession(current => current && lockedSession(current)) }
     } finally { sendingRef.current = false; setBusy(false) }
   }
+  function synchronizeSession(next: Session) {
+    ++sessionEpoch.current
+    setText(current => current || pending?.text || '')
+    setBusy(false); sendingRef.current = false
+    setSubmitted(null); setSession(next); setPending(null); setError('')
+  }
   const summary = pending?.text || session?.assistance_paused ? null : session?.summary
   const activePhase = PHASES.indexOf(session?.phase || 'VERIFY_ID')
   const selectedDemo = demo?.scenarios.find(s => s.id === demoChoice)
@@ -268,8 +279,8 @@ export default function App() {
   return <Tabs.Root value={tab} onValueChange={setTab} className="app-shell">
     <header className="app-header"><a href="/" aria-label="ClaimFlow home"><Brand/></a><span className="header-divider"/><span className="workspace-label">Claims support workspace</span>
       <Tabs.List className="main-tabs" aria-label="Workspace"><Tabs.Trigger value="playground"><MessageSquare size={16}/><span>Agent Playground</span></Tabs.Trigger><Tabs.Trigger value="lab"><FlaskConical size={16}/><span>Evaluation Lab</span></Tabs.Trigger></Tabs.List>
-      {tab==='lab'&&<span className="lab-mode"><Database size={15} aria-hidden="true"/><strong>Scripted tests</strong><span>No model calls</span></span>}
-      <Button ref={settingsButton} variant="ghost" size="sm" disabled={!session||busy||!!pending} onClick={()=>setSettingsOpen(true)}>Model settings</Button><span className="demo-label"><span/>Synthetic data</span>
+      <div className="workspace-mode">{tab==='lab'?<span className="lab-mode"><Database size={15} aria-hidden="true"/><strong>Scripted tests</strong><span>No model calls</span></span>:<span className="demo-label"><span/>Synthetic data</span>}</div>
+      <Button ref={settingsButton} variant="ghost" size="sm" disabled={!session||busy||!!pending} onClick={()=>setSettingsOpen(true)}>Model settings</Button>
     </header>
     <Tabs.Content value="playground" className={'workspace '+(playgroundExpanded?'playground-expanded':'')} forceMount hidden={tab!=='playground'}>
       {!playgroundExpanded&&<div className="page-heading"><div><div className="eyebrow">AGENT PLAYGROUND</div><h1>Claims support</h1><p>A clear answer. A considered next step.</p></div>{sessionControls}</div>}
@@ -313,8 +324,8 @@ export default function App() {
         {inspector&&session&&<aside className="inspector-panel" aria-label="Workflow inspector"><Inspector session={session}/></aside>}
       </main>
     </Tabs.Content>
-    <Tabs.Content value="lab" className="workspace lab-workspace" forceMount hidden={tab!=='lab'}><EvaluationLab session={session}/></Tabs.Content>
-    {settingsOpen&&session&&<ModelSettings session={session} onApplied={s=>{setSubmitted(null);setSession(s);setText('');setPending(null);setError('');setNearBottom(true);setNewMessage(false)}} onBusy={value=>{if(value)++sessionEpoch.current;sendingRef.current=value;setBusy(value)}} onClose={()=>setSettingsOpen(false)} restoreFocus={()=>settingsButton.current?.focus()}/>}
+    <Tabs.Content value="lab" className="workspace lab-workspace" forceMount hidden={tab!=='lab'}><EvaluationLab session={session} onSynchronized={synchronizeSession}/></Tabs.Content>
+    {settingsOpen&&session&&<ModelSettings session={session} onApplied={s=>{setSubmitted(null);setSession(s);setText('');setPending(null);setError('');setNearBottom(true);setNewMessage(false)}} onSynchronized={synchronizeSession} onBusy={value=>{if(value)++sessionEpoch.current;sendingRef.current=value;setBusy(value)}} onClose={()=>setSettingsOpen(false)} restoreFocus={()=>settingsButton.current?.focus()}/>}
     <footer className="app-footer"><span><ShieldCheck size={12}/>A support demo with deterministic SOP controls</span><span>Synthetic identity matching · Simulated actions</span></footer>
     <Dialog.Root open={mobileInspector} onOpenChange={setMobileInspector}><Dialog.Portal><Dialog.Overlay className="dialog-overlay"/><Dialog.Content className="inspector-drawer" onCloseAutoFocus={event=>{event.preventDefault();mobileInspectorButton.current?.focus()}}><Dialog.Title className="sr-only">Workflow inspector</Dialog.Title><Dialog.Description className="sr-only">Verification, context, and sanitized policy decisions</Dialog.Description><Dialog.Close className="dialog-close" aria-label="Close workflow inspector"><X size={20}/></Dialog.Close>{session&&<Inspector session={session}/>}</Dialog.Content></Dialog.Portal></Dialog.Root>
     <Dialog.Root open={demoOpen} onOpenChange={setDemoOpen}><Dialog.Portal><Dialog.Overlay className="dialog-overlay"/><Dialog.Content className="demo-dialog" onCloseAutoFocus={e=>{e.preventDefault();(demoInserted.current?inputRef:demoButton).current?.focus()}}><span className="eyebrow">SYNTHETIC DEMO SCENARIO</span><Dialog.Title>Choose a demo scenario</Dialog.Title><Dialog.Description>Explore the complete workflow with a fictional policyholder. These details are supplied test data, not real credentials.</Dialog.Description>{demo&&selectedDemo?<><div className="demo-scenarios" role="group" aria-label="Demo scenarios">{demo.scenarios.map(s=><Button key={s.id} variant="outline" aria-pressed={demoChoice===s.id} onClick={()=>setDemoChoice(s.id)}>{s.name}</Button>)}</div><p className="demo-context">{selectedDemo.description}</p><div className="demo-opening">{selectedDemo.opening}</div>{demoChoice==='frustrated'&&<details className="demo-identity"><summary>Synthetic identity for the next message</summary><p>{demo.opening}</p></details>}<Button onClick={()=>{demoInserted.current=true;setText(selectedDemo.opening);setDemoOpen(false)}}>Use this opening message<ArrowRight size={16}/></Button></>:demoError?<div><p role="alert">{demoError}</p><Button onClick={showDemo}>Retry loading scenarios</Button></div>:<p role="status">Loading synthetic scenario…</p>}<Dialog.Close className="dialog-close" aria-label="Close demo scenario"><X size={20}/></Dialog.Close></Dialog.Content></Dialog.Portal></Dialog.Root>
@@ -323,7 +334,7 @@ export default function App() {
   </Tabs.Root>
 }
 
-function EvaluationLab({ session }: { session: Session | null }) {
+function EvaluationLab({ session, onSynchronized }: { session: Session | null; onSynchronized: (session: Session) => void }) {
   const [scenarios,setScenarios]=useState<Scenario[]>([])
   const [selected,setSelected]=useState('margaret')
   const [results,setResults]=useState<Record<string,Evaluation>>({})
@@ -336,7 +347,19 @@ function EvaluationLab({ session }: { session: Session | null }) {
   async function run() {
     if(!session||running)return
     setRunning(true);setError('')
-    try{const result=await api<Evaluation>('/evaluations/'+selected,{},session.csrf);setResults(old=>({...old,[selected]:result}))}catch(e){setError((e as Error).message)}finally{setRunning(false)}
+    try{const result=await api<Evaluation>('/evaluations/'+selected,{},session.csrf);setResults(old=>({...old,[selected]:result}))}
+    catch(e){
+      setError((e as Error).message)
+      if(e instanceof ApiError && e.status===403) {
+        try {
+          const latest=await api<Session>('/session')
+          if(latest.csrf!==session.csrf) {
+            onSynchronized(latest)
+            setError('The session changed in another tab and has been synchronized. Run the scenario again.')
+          }
+        } catch { /* Keep the error visible when synchronization is unavailable. */ }
+      }
+    }finally{setRunning(false)}
   }
   return <><div className="page-heading"><div><div className="eyebrow">EVALUATION LAB</div><h1>Trust, made testable.</h1><p>Replay the scenarios. Inspect the decisions.</p></div></div>
     <main className="lab-layout"><aside className="scenario-list"><div className="scenario-list-header"><h2>Test scenarios</h2><span>{scenarios.length}</span></div>{[...new Set(scenarios.map(s=>s.category))].map(category=><div key={category}><h3>{category}</h3>{scenarios.filter(s=>s.category===category).map(s=><button key={s.id} onClick={()=>{setSelected(s.id);setError('')}} className={selected===s.id?'selected':''}><span>{s.name}</span>{results[s.id]?(results[s.id].passed?<CheckCircle2 size={15} className="status-good"/>:<X size={15} className="status-bad"/>):<ChevronRight size={14}/>}</button>)}</div>)}</aside>
