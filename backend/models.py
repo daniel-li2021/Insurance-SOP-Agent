@@ -4,7 +4,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 Phase = Literal['VERIFY_ID', 'RESOLVE_INTENT', 'PROCESS_CASE', 'POST_PROCESS']
 IdentityField = Literal['name', 'dob', 'phone', 'email', 'id_last4', 'policy_number']
-Topic = Literal['status', 'denial', 'documents', 'alternatives', 'submission', 'timing', 'format', 'receipt', 'payment']
+Topic = Literal['status', 'denial', 'documents', 'alternatives', 'submission', 'timing', 'format', 'receipt', 'payment', 'appeal']
 
 
 class StrictModel(BaseModel):
@@ -29,7 +29,9 @@ class Interpretation(StrictModel):
     month: int | None = Field(default=None, ge=1, le=12)
     year: int | None = Field(default=None, ge=1900, le=2100)
     status: Literal['denied', 'closed', 'open'] | None = None
-    topics: list[Topic] = Field(default_factory=list, max_length=9)
+    topics: list[Topic] = Field(default_factory=list, max_length=10)
+    documents: list[str] = Field(default_factory=list, max_length=6)
+    detailed: bool = False
     emotion: Literal['neutral', 'frustrated', 'anxious', 'confused', 'refusing'] = 'neutral'
     action: Literal['continue', 'wrap_up', 'human'] = 'continue'
     new_case: bool = False
@@ -54,6 +56,19 @@ class Event(StrictModel):
     party_id: str | None = None
 
 
+class SummaryCase(StrictModel):
+    case_id: str
+    case_type: str
+    status: str
+    denial_reason: str | None = None
+    payment: str
+    allowed_maximum: str
+    appeal_deadline: str | None = None
+    deadline_passed: bool = False
+    next_steps: str
+    unresolved: str
+
+
 class Summary(StrictModel):
     id: str
     text: str
@@ -61,6 +76,7 @@ class Summary(StrictModel):
     expires_at: float
     status: Literal['offered', 'skipped', 'expired', 'failed', 'timeout', 'simulated_sent'] = 'offered'
     receipt: str | None = None
+    cases: list[SummaryCase] = Field(default_factory=list)
 
 
 class ModelSettings(StrictModel):
@@ -93,6 +109,7 @@ class Session(StrictModel):
     discussed: list[str] = Field(default_factory=list)
     discussed_by_case: dict[str, list[str]] = Field(default_factory=dict)
     pending_topics: list[Topic] = Field(default_factory=list)
+    pending_documents: list[str] = Field(default_factory=list)
     context_notes: list[dict] = Field(default_factory=list)
     scope_streak: int = 0
     verification_attempts: int = 0

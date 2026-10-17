@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import * as Tabs from '@radix-ui/react-tabs'
 import * as Dialog from '@radix-ui/react-dialog'
-import { ArrowDown, ArrowRight, ArrowUp, Check, CheckCheck, CheckCircle2, ChevronDown, ChevronRight, Circle, ClipboardList, FlaskConical, Info, Loader2, LockKeyhole, Mail, MessageSquare, PanelRightClose, PanelRightOpen, Plus, RotateCcw, ShieldCheck, X } from 'lucide-react'
+import { ArrowDown, ArrowRight, ArrowUp, Check, CheckCheck, CheckCircle2, ChevronDown, ChevronRight, Circle, CircleAlert, Clock3, ClipboardList, FlaskConical, Info, Loader2, LockKeyhole, Mail, MessageSquare, PanelRightClose, PanelRightOpen, Plus, RotateCcw, ShieldCheck, X } from 'lucide-react'
 import { ModelSettings } from './ModelSettings'
 import { Button } from './components/Button'
 import { api, ApiError, type Session, type Event, type Scenario, type Evaluation } from './api'
@@ -57,6 +57,12 @@ function Inspector({ session }: { session: Session }) {
 
 type Pending = { path: string; body: Record<string,unknown>; text?: string }
 type DemoScenario = { id: string; name: string; opening: string; description: string }
+
+function pendingLabel(text: string) {
+  // Only fixed, non-identity questions are safe before server-side redaction.
+  const safe = /^(?:can i still appeal after the deadline|why was my claim denied|how much (?:money will i get|will i receive)|what (?:is the (?:payment|status)|documents (?:are needed|do i need))|how (?:do i submit documents|long will it take))\??$/i
+  return safe.test(text) ? text : 'Message pending · personal details hidden'
+}
 
 function lockedSession(s: Session): Session {
   return { ...s, verified:false, phase:'VERIFY_ID', case_id:null, choices:[], summary:null, auth_expires_at:null,
@@ -131,12 +137,14 @@ export default function App() {
   async function execute(operation: Pending) {
     if (!session || sendingRef.current) return
     sendingRef.current = true; setBusy(true); setError(''); setPending(operation)
+    if (operation.text) setText('')
     try {
       const next = await api<Session>(operation.path, operation.body, session.csrf)
       setSession(next); setPending(null)
       if (operation.text) setText('')
       inputRef.current?.focus()
     } catch (e) {
+      if (operation.text) setText(operation.text)
       setError(e instanceof Error ? e.message : 'Something went wrong. Please retry.')
       if (e instanceof ApiError && e.status === 401) {
         setSession(current => current && lockedSession(current)); setPending(null)
@@ -149,12 +157,12 @@ export default function App() {
 
   function send() {
     if (!session || !text.trim()) return
-    setNearBottom(true)
+    if (pending || sendingRef.current) return
     void execute({ path:'/turn',body:{ text:text.trim(),version:session.version,request_id:crypto.randomUUID() },text:text.trim() })
   }
   function action(action: string) {
     if (!session) return
-    setNearBottom(true)
+    if (pending || sendingRef.current) return
     void execute({ path:'/action',body:{ action,version:session.version,summary_id:action==='preview'?null:session.summary?.id,request_id:crypto.randomUUID() } })
   }
   async function reset() {
@@ -192,17 +200,18 @@ export default function App() {
             <div className="assistant-message welcome"><Brand small/><div className="message-body"><span className="message-author">ClaimFlow</span><p>Hello, I’m here to help with your insurance claim.</p><p>We’ll first verify your identity, then look at your claim together and work through the next steps. You can ask questions along the way.</p><p className="muted">To begin, tell me what brings you here and share any three approved identity details: full name, date of birth, phone, email, or SSN / approved national-ID last four.</p></div></div>
 
             {session?.messages.map(m => <div className={m.role==='user'?'user-message':'assistant-message'} key={m.id}>{m.role==='assistant'&&<Brand small/>}<div className="message-body"><span className="message-author">{m.role==='assistant'?'ClaimFlow':'You'}</span><div className="message-text">{m.text}</div>{m.references.length>0&&<details className="message-grounding"><summary><ShieldCheck size={12}/>Grounded in {m.references.length} {m.references.length===1?'source':'sources'}<ChevronDown size={12}/></summary><ul>{m.references.map(r=><li key={r} className="mono">{r}</li>)}</ul></details>}</div></div>)}
+            {pending?.text&&!session?.messages.some(m=>m.id===pending.body.request_id)&&<div className="user-message pending-message"><div className="message-body"><div className="message-text">{pendingLabel(pending.text)}</div><span className={'delivery-status '+(error?'status-bad':'')} role="status">{error?<CircleAlert size={14}/>:<Clock3 size={14}/>} {error?'Not sent · Retry below':'Sending…'}</span></div></div>}
             {session?.choices.length ? <div className="case-choices">{session.choices.map(c=><Button variant="outline" size="sm" key={c.case_id} disabled={busy} onClick={()=>void execute({path:'/turn',body:{text:`Please discuss ${c.case_id}. I want its status.`,version:session.version,request_id:crypto.randomUUID()},text:`Please discuss ${c.case_id}. I want its status.`})}><span className="mono">{c.case_id}</span> · {c.created_at.slice(0,4)}<ArrowRight size={13}/></Button>)}</div>:null}
-            {summary&&<div className="summary-preview"><div className="summary-header"><Mail size={17}/><h3>Your discussion summary</h3><span>SIMULATION</span></div><div className="summary-content">{summary.text}</div><div className="summary-recipient"><span>To your on-file email</span><strong>{summary.recipient}</strong></div>
+            {summary&&<div className="summary-preview"><div className="summary-header"><Mail size={17}/><h3>Claim discussion summary</h3><span>Simulation</span></div><div className="summary-content">{summary.cases?.length ? <>{summary.cases.map(c=><section className="summary-case" key={c.case_id} aria-label={'Summary for '+c.case_id}><div className="summary-claim"><span className="summary-label">Claim</span><h4>{c.case_id} · {c.case_type}</h4><p className="summary-status">{c.status==='Denied'?<CircleAlert size={17} className="status-bad"/>:<CheckCircle2 size={17}/>} {c.status}</p></div><dl>{c.denial_reason&&<div><dt>Reason for denial</dt><dd>{c.denial_reason}</dd></div>}<div><dt>Payment</dt><dd className="summary-payment">{c.payment}</dd><dd className="summary-note">Recorded finalized insurer payment. Allowed maximum: {c.allowed_maximum}, not a promised payout.</dd></div>{c.appeal_deadline&&<div><dt>Appeal deadline</dt><dd className={c.deadline_passed?'deadline-passed':''}>{c.appeal_deadline}{c.deadline_passed?' — Passed':''}</dd></div>}<div><dt>Next steps</dt><dd>{c.next_steps}</dd></div></dl><details className="summary-unresolved"><summary>Still unresolved</summary><p>{c.unresolved}</p></details></section>)}<p className="summary-boundary">This is a synthetic summary. No appeal, payment, document submission, or email delivery has occurred.</p></> : summary.text}</div><div className="summary-recipient"><span>To your on-file email</span><strong>{summary.recipient}</strong></div>
               {['offered','failed','timeout'].includes(summary.status)&&remaining>0?<><p className="micro muted consent-note">Choose explicitly. This offer expires in {Math.floor(remaining/60)}:{String(remaining%60).padStart(2,'0')}. No real email will be delivered.</p><div className="summary-actions"><Button disabled={busy} onClick={()=>action('send')}><Mail size={15}/>{summary.status==='offered'?'Send simulated email':'Retry simulation'}</Button><Button variant="outline" disabled={busy} onClick={()=>action('skip')}>Skip</Button></div></>:<div className="summary-result"><CheckCircle2 size={16}/>{summary.status==='simulated_sent'?'Simulation recorded. No email was delivered.':summary.status==='skipped'?'Skipped. No email was sent.':'Offer expired. No email action was taken.'}{summary.status==='simulated_sent'&&<span className="micro mono">Receipt {summary.receipt}</span>}{summary.status==='expired'&&<Button variant="outline" size="sm" disabled={busy} onClick={()=>action('preview')}>Review a fresh summary</Button>}</div>}
             </div>}
-            {busy&&<div className="thinking" role="status"><Brand small/><span><Loader2 size={14} className="spin"/>Checking the next step…</span></div>}
+            {busy&&<div className="assistant-message thinking" role="status"><Brand small/><div className="message-body"><span className="message-author">ClaimFlow</span><span className="processing-label"><Loader2 size={18} className="spin"/>Checking your claim…</span></div></div>}
           </div>
           {newMessage&&!nearBottom&&<button className="jump-bottom" onClick={()=>{ scrollRef.current?.scrollTo({top:scrollRef.current.scrollHeight,behavior:'smooth'});setNearBottom(true);setNewMessage(false) }}><ArrowDown size={13}/>New message</button>}
           <div className="composer-area">
             {error&&<div className="error-banner" role="alert"><Info size={15}/><span>{error}</span>{pending?<Button variant="ghost" size="sm" disabled={busy} onClick={()=>void execute(pending)}>Retry</Button>:<Button variant="ghost" size="sm" disabled={busy} onClick={()=>void refresh().then(()=>setError('')).catch(()=>reset())}>Recover</Button>}<button aria-label="Dismiss error" onClick={()=>{setError('');setPending(null)}}><X size={15}/></button></div>}
             {session?.verified&&session.case_id&&session.phase!=='POST_PROCESS'&&<div className="wrap-up"><span>Have what you need?</span><button disabled={busy} onClick={()=>action('preview')}>Review summary <ArrowRight size={13}/></button></div>}
-            <form className="composer" onSubmit={e=>{e.preventDefault();send()}}><label className="sr-only" htmlFor="message">Message ClaimFlow</label><textarea id="message" ref={inputRef} value={text} maxLength={4000} rows={2} disabled={!session||busy} placeholder="Tell me about your claim…" onChange={e=>setText(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.nativeEvent.isComposing){e.preventDefault();send()}}}/><Button type="submit" size="icon" disabled={!session||busy||!text.trim()} aria-label="Send message">{busy?<Loader2 size={17} className="spin"/>:<ArrowUp size={19}/>}</Button></form>
+            <form className="composer" onSubmit={e=>{e.preventDefault();send()}}><label className="sr-only" htmlFor="message">Message ClaimFlow</label><textarea id="message" ref={inputRef} value={text} maxLength={4000} rows={2} disabled={!session||busy} placeholder={session?.messages.length?'Ask a follow-up question…':'Tell me about your claim…'} onChange={e=>{setText(e.target.value);if(pending){setPending(null);setError('')}}} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.nativeEvent.isComposing){e.preventDefault();send()}}}/><Button type="submit" size="icon" disabled={!session||busy||!!pending||!text.trim()} aria-label="Send message">{busy?<Loader2 size={17} className="spin"/>:<ArrowUp size={19}/>}</Button></form>
             <div className="composer-footer"><span><LockKeyhole size={11}/>Identity details are redacted in saved conversation views.</span><span>Enter to send · Shift + Enter for a new line</span></div>
           </div>
         </section>

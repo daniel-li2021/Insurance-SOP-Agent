@@ -1,6 +1,7 @@
 export type Event = { sequence: number; code: string; phase: string; at: number; detail: string; references: string[] }
 export type Message = { id: string; role: 'user' | 'assistant'; text: string; protected: boolean; references: string[] }
-export type Summary = { id: string; text: string; recipient: string; expires_at: number; status: string; receipt: string | null }
+export type SummaryCase = { case_id: string; case_type: string; status: string; denial_reason: string | null; payment: string; allowed_maximum: string; appeal_deadline: string | null; deadline_passed: boolean; next_steps: string; unresolved: string }
+export type Summary = { id: string; text: string; cases?: SummaryCase[]; recipient: string; expires_at: number; status: string; receipt: string | null }
 export type Session = {
   version: number; phase: string; verified: boolean; csrf: string; model: string;
   verification: { count: number; required: number; fields: string[]; representative: boolean };

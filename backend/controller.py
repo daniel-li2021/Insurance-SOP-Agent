@@ -5,7 +5,7 @@ import uuid
 from datetime import datetime, timezone
 from .fixtures import Claim, Fixtures
 from .identity import merge_identity, supported, verify
-from .models import Interpretation, Message, Session, Summary
+from .models import Interpretation, Message, Session, Summary, SummaryCase
 
 AUTH_SECONDS = 900
 CONSENT_SECONDS = 600
@@ -41,6 +41,7 @@ class Controller:
             s.discussed_by_case = {}
             s.context_notes = []
             s.pending_topics = []
+            s.pending_documents = []
             s.hints = {}
             s.intent = 'none'
             s.unresolved = []
@@ -100,6 +101,7 @@ class Controller:
                 s.discussed_by_case = {}
                 s.context_notes = []
                 s.pending_topics = []
+                s.pending_documents = []
                 s.hints = {}
                 s.transition('VERIFY_ID', now)
                 s.event('IDENTITY_RECHECK', 'Changed identity requires renewed authorization.', now)
@@ -107,6 +109,7 @@ class Controller:
                 s.party_id = party
                 s.auth_until = now + AUTH_SECONDS
             s.event('IDENTITY_EVALUATED', 'Identity verified.' if party else 'Verification incomplete; no partial match results disclosed.', now)
+        previous_emotion = s.emotion
         s.emotion = i.emotion
         if i.intent not in ('none', 'out_of_scope'):
             s.intent = i.intent
@@ -116,13 +119,15 @@ class Controller:
             s.hints = {}
             s.discussed = []
             s.pending_topics = []
+            s.pending_documents = []
             s.context_notes = []
             if s.party_id: s.transition('RESOLVE_INTENT', now)
         if s.phase in ('VERIFY_ID', 'RESOLVE_INTENT') and i.topics:
             s.pending_topics = list(dict.fromkeys(s.pending_topics + i.topics))
+            s.pending_documents = list(dict.fromkeys(s.pending_documents + i.documents))
         if i.emotion != 'neutral' or i.alternatives_exhausted or i.topics:
             s.context_notes.append({'message_id':message_id, 'emotion':i.emotion,
-                                    'topics':i.topics,'alternatives_exhausted':i.alternatives_exhausted,
+                                    'topics':i.topics,'documents':i.documents,'alternatives_exhausted':i.alternatives_exhausted,
                                     'kind':'caller_report'})
         for key in ('case_id', 'case_type', 'month', 'year', 'status'):
             value = getattr(i, key)
@@ -131,7 +136,7 @@ class Controller:
         if any(getattr(i, k) is not None for k in ('case_id', 'case_type', 'month', 'year', 'status')):
             s.event('CONTEXT_CAPTURED', 'Caller-provided claim hints retained without confirming claim facts.', now)
         s.messages.append(Message(id=message_id, role='user', text=self.redact(text, i), protected=was_authorized))
-        prefix = EMPAT.get(i.emotion, '')
+        prefix = EMPAT.get(i.emotion, '') if i.emotion != previous_emotion else ''
         # Verification result is not sufficient proof of a representative's authority.
         if s.representative:
             try:
@@ -208,9 +213,12 @@ class Controller:
         if text.strip().casefold() in ('yes', 'send', 'send it', 'skip'):
             return self.reply(s, prefix, 'To wrap up, choose “Review summary.” You can then explicitly choose Send simulated email or Skip. A chat message alone does not authorize sending.', now)
         topics = list(dict.fromkeys(i.topics + s.pending_topics)) or ['status']
-        exhausted = i.alternatives_exhausted or any(n.get('alternatives_exhausted') for n in s.context_notes)
-        body, refs = self.explain(claim, topics, now, exhausted)
+        exhausted = i.alternatives_exhausted
+        body, refs = self.explain(claim, topics, now, exhausted,
+                                  documents=i.documents or s.pending_documents,
+                                  first=not s.discussed, detailed=i.detailed)
         s.pending_topics = []
+        s.pending_documents = []
         s.discussed = list(dict.fromkeys(s.discussed + topics))
         s.discussed_by_case[s.case_id] = list(s.discussed)
         if i.alternatives_exhausted or (claim.appeal_deadline and claim.appeal_deadline < datetime.fromtimestamp(now, timezone.utc).date()):
@@ -223,21 +231,28 @@ class Controller:
                                   protected=bool(s.party_id), references=refs or []))
         return s
 
-    def explain(self, c: Claim, topics: list[str], now: float, exhausted: bool = False) -> tuple[str, list[str]]:
+    def explain(self, c: Claim, topics: list[str], now: float, exhausted: bool = False,
+                documents: list[str] | None = None, first: bool = True, detailed: bool = False) -> tuple[str, list[str]]:
         refs = [f'claims.json#{c.case_id}']
-        parts = [f'{c.case_id} · {c.case_type.capitalize()} claim · created {c.created_at}\nRecorded status: {c.status}.']
+        parts = []
         g = self.f.guidance
         needs = ', '.join(c.documents_needed)
         expired = c.appeal_deadline and c.appeal_deadline < datetime.fromtimestamp(now, timezone.utc).date()
-        if c.denial_reason and any(t in topics for t in ('status', 'denial', 'documents')):
-            parts.append(f'The recorded denial reason is that {c.denial_reason}.')
+        if detailed or 'status' in topics:
+            parts.append(f'{c.case_id} · {c.case_type.capitalize()} claim\nRecorded status: {c.status}.')
+        if c.denial_reason and (detailed or any(t in topics for t in ('status', 'denial'))):
+            parts.append(f'Your claim {c.case_id} was denied because {c.denial_reason}.')
         if 'payment' in topics:
-            parts.append(f'Expected reimbursement: ${c.expected_reimbursement_amount:,.2f}.\nAllowed maximum: ${c.allowed_max_amount:,.2f}.\nFinalized insurer payment: ${c.net_pay:,.2f}.\nFee-schedule amount (net fee): ${c.net_fee:,.2f}.\nThe allowed maximum is not a promised payout. The fee-schedule amount does not establish what you owe. These are recorded amounts; I have made no payment decision.')
+            parts.append(f'The recorded finalized insurer payment for {c.case_id} is ${c.net_pay:,.2f}.\n\nThe allowed maximum is ${c.allowed_max_amount:,.2f}, not a promised payout. The claim is currently recorded as {c.status}.')
+            if detailed:
+                parts.append(f'Expected reimbursement: ${c.expected_reimbursement_amount:,.2f}. Fee-schedule amount (net fee): ${c.net_fee:,.2f}. The fee-schedule amount does not establish what you owe. I have made no payment decision.')
             refs.append('claim_schema.json#field_descriptions')
-        if c.documents_needed and any(t in topics for t in ('denial', 'documents', 'alternatives', 'format')):
+        if c.documents_needed and ('documents' in topics or detailed) and not documents:
             parts.append('Requested documents: ' + needs + '.')
         if c.documents_needed and any(t in topics for t in ('documents', 'alternatives', 'format')):
-            for doc in c.documents_needed:
+            # Model-proposed names can only narrow the authorized record's requirements.
+            focused = [d for d in c.documents_needed if any(d.casefold() in name.casefold() for name in documents or [])]
+            for doc in focused or c.documents_needed:
                 key = DOCUMENT_KEYS.get(doc, doc)
                 group = 'document_alternative_guidance' if 'alternatives' in topics else 'document_guidance'
                 entry = g[group].get(key, g.get('document_alternative_guidance', {}).get('default') if group == 'document_alternative_guidance' else g['default_guidance'])
@@ -260,33 +275,47 @@ class Controller:
         if 'receipt' in topics:
             parts.append('I cannot confirm receipt or attachment of documents in this demo. The guidance notes an intake delay; if the record stays unchanged after a few business days, ask member support to check the attachments.')
             refs.append('required_document_guideline.json#claim_followup_guidance/receipt_confirmation')
-        if c.appeal_deadline:
+        if c.appeal_deadline and (detailed or 'appeal' in topics or 'timing' in topics or (first and any(t in topics for t in ('status', 'denial', 'documents', 'alternatives')))):
             formatted = c.appeal_deadline.strftime('%B %d, %Y').replace(' 0', ' ')
             if expired:
-                parts.append(f'The recorded appeal deadline was {formatted}, and it has passed. Please ask a human claims representative to review what options remain. I cannot promise a late appeal, reopening, or reimbursement. No transfer or appeal has been made.')
+                parts.append(f'The recorded appeal deadline was {formatted}, and it has passed. I can’t confirm whether a late appeal or reopening is available. Contact a human claims representative to review any remaining options. No appeal or transfer has been initiated.')
             else:
                 parts.append(f'The recorded appeal deadline is {formatted}. Member support can confirm applicable submission requirements; I cannot extend this date.')
         if exhausted:
             parts.append(g['claim_followup_settings']['human_review_after_document_alternatives_exhausted']['en'] + ' This demo cannot transfer you.')
             refs.append('required_document_guideline.json#claim_followup_settings/human_review_after_document_alternatives_exhausted')
+        if not parts: parts.append(f'The recorded status of {c.case_id} is {c.status}. What would you like to know?')
         return '\n\n'.join(parts), list(dict.fromkeys(refs))
 
     def preview(self, s: Session, c: Claim, prefix: str, now: float):
         s.transition('POST_PROCESS', now)
-        sections, refs = [], []
-        for case_id, topics in (s.discussed_by_case or {c.case_id:s.discussed}).items():
-            discussed_claim = self.f.claim(s, case_id, now)
-            if discussed_claim:
-                body, evidence = self.explain(discussed_claim, list(dict.fromkeys(['status'] + topics)), now)
-                sections.append(body)
-                refs.extend(evidence)
-        body = 'Discussion summary\n\n' + '\n\n——\n\n'.join(sections)
-        refs = list(dict.fromkeys(refs))
-        if s.unresolved: body += '\n\nStill to resolve: ' + '; '.join(s.unresolved)
+        cases, refs = [], []
+        for case_id in (s.discussed_by_case or {c.case_id: s.discussed}):
+            claim = self.f.claim(s, case_id, now)
+            if claim:
+                expired = bool(claim.appeal_deadline and claim.appeal_deadline < datetime.fromtimestamp(now, timezone.utc).date())
+                reason = ('Missing ' + ' and '.join(DOCUMENT_KEYS.get(d, d) for d in claim.documents_needed) + '.') if claim.denial_reason and claim.documents_needed else claim.denial_reason
+                next_steps = ('Ask the provider about replacement documents. Contact a human claims representative to confirm whether further review is possible.' if claim.documents_needed else 'Contact member support if you have questions about this recorded outcome.')
+                cases.append(SummaryCase(case_id=claim.case_id, case_type=claim.case_type.capitalize(),
+                    status=claim.status.capitalize(), denial_reason=reason,
+                    payment=f'${claim.net_pay:,.2f}', allowed_maximum=f'${claim.allowed_max_amount:,.2f}',
+                    appeal_deadline=claim.appeal_deadline.strftime('%B %d, %Y').replace(' 0', ' ') if claim.appeal_deadline else None,
+                    deadline_passed=expired, next_steps=next_steps,
+                    unresolved=('Document receipt has not been confirmed. ' if claim.documents_needed else '') + 'No appeal or transfer has been initiated.'))
+                refs.append(f'claims.json#{claim.case_id}')
+        sections = []
+        for item in cases:
+            fields = [f'{item.case_id} · {item.case_type}', f'Status: {item.status}']
+            if item.denial_reason: fields.append('Reason for denial: ' + item.denial_reason)
+            fields.append(f'Payment: {item.payment} (recorded finalized insurer payment). Allowed maximum: {item.allowed_maximum}, not a promised payout.')
+            if item.appeal_deadline: fields.append(f'Appeal deadline: {item.appeal_deadline}' + (' — Passed' if item.deadline_passed else ''))
+            fields.extend(['Next steps: ' + item.next_steps, 'Still unresolved: ' + item.unresolved])
+            sections.append('\n\n'.join(fields))
+        body = '\n\n——\n\n'.join(sections) + '\n\nThis is a synthetic summary. No appeal, payment, document submission, or email delivery has occurred.'
         person = self.f.person(s.party_id)
         name, domain = person.email.split('@')
         masked = name[0] + '•••@' + domain
-        s.summary = Summary(id=str(uuid.uuid4()), text=body, recipient=masked, expires_at=now + CONSENT_SECONDS)
+        s.summary = Summary(id=str(uuid.uuid4()), text=body, cases=cases, recipient=masked, expires_at=now + CONSENT_SECONDS)
         s.event('SUMMARY_OFFERED', 'Preview ready; explicit Send or Skip required. Consent expires in 10 minutes.', now, refs)
         return self.reply(s, prefix, 'Your summary is ready below. Review it, then choose Send simulated email or Skip. Nothing is sent automatically.', now, refs)
 
