@@ -9,9 +9,9 @@ from backend.models import Interpretation, ModelSettings, Session
 from backend.providers import NativeInterpreter, CATALOG, make_interpreter, provider_schema
 
 
-@pytest.mark.parametrize('provider', ['anthropic', 'gemini'])
+@pytest.mark.parametrize('provider,model', [(p,m) for p in ('anthropic','gemini') for m in CATALOG[p]['models']])
 @pytest.mark.parametrize('failure', ['', 'malformed', 'schema', 'refusal', 'usage', '401', '429', 'redirect', 'timeout'])
-def test_native_contract(monkeypatch, provider, failure):
+def test_native_contract(monkeypatch, provider, model, failure):
     key = 'private-contract-key'
     output = Interpretation(emotion='anxious', topics=['alternatives']).model_dump_json()
     if failure == 'malformed': output = 'not json'
@@ -22,9 +22,10 @@ def test_native_contract(monkeypatch, provider, failure):
         assert 'tools' not in body and 'api_key' not in request.content.decode()
         if provider=='anthropic':
             assert request.url.host=='api.anthropic.com' and request.headers['x-api-key']==key
+            assert body['model']==model and body['output_config']['effort']=='low'
             assert body['output_config']['format']['schema']==provider_schema()
             data={'stop_reason':'refusal' if failure=='refusal' else 'end_turn',
-                  'content':[{'type':'text','text':output}], 'usage':{'input_tokens':20,'output_tokens':30}}
+                  'content':[{'type':'thinking','thinking':'private reasoning','signature':'opaque'}, {'type':'text','text':output}], 'usage':{'input_tokens':20,'output_tokens':30}}
         else:
             assert request.url.host=='generativelanguage.googleapis.com' and request.headers['x-goog-api-key']==key
             assert body['generationConfig']['responseFormat']['text']['schema']==provider_schema()
@@ -38,7 +39,7 @@ def test_native_contract(monkeypatch, provider, failure):
         return httpx.Response(200,json=data)
     original=httpx.AsyncClient
     monkeypatch.setattr(httpx,'AsyncClient',lambda **kw: original(transport=httpx.MockTransport(handler),**kw))
-    adapter=NativeInterpreter(provider,CATALOG[provider]['models'][0],key)
+    adapter=NativeInterpreter(provider,model,key)
     if failure:
         with pytest.raises(ModelFailure) as exc: asyncio.run(adapter.interpret('I am worried',Session()))
         assert key not in str(exc.value)
@@ -47,15 +48,17 @@ def test_native_contract(monkeypatch, provider, failure):
         assert parsed.emotion=='anxious' and usage['tokens']==50
 
 
-def test_openai_contract():
+@pytest.mark.parametrize('model', CATALOG['openai']['models'])
+def test_openai_contract(model):
     async def run():
-        adapter=LiveInterpreter('private-contract-key')
+        adapter=LiveInterpreter('private-contract-key',model)
         await adapter.client.close()
         parse=AsyncMock(return_value=SimpleNamespace(output_parsed=Interpretation(topics=['documents']),usage=SimpleNamespace(total_tokens=60)))
         adapter.client=SimpleNamespace(responses=SimpleNamespace(parse=parse))
         parsed,usage=await adapter.interpret('Documents?',Session())
         assert parsed.topics==['documents'] and usage['tokens']==60
         args=parse.call_args.kwargs
+        assert args['model']==model
         assert args['text_format'] is Interpretation and args['store'] is False
         assert args['max_output_tokens']==2200 and args['reasoning']=={'effort':'low'} and 'tools' not in args
         parse.return_value=SimpleNamespace(output_parsed=None)

@@ -4,7 +4,7 @@ from uuid import UUID
 from typing import Literal
 from pydantic import Field, SecretStr, field_validator
 from .models import ModelSettings, Session, StrictModel
-from .providers import CATALOG, make_interpreter, validate_selection
+from .providers import CATALOG, MODEL_DETAILS, make_interpreter, validate_selection
 
 class SettingsRequest(StrictModel):
     request_id: UUID
@@ -22,17 +22,21 @@ class SettingsRequest(StrictModel):
         return value
 
 class Settings:
-    def __init__(self, default_interpreter):
+    def __init__(self, default_interpreter, allow_local: bool = True):
+        self.allow_local = allow_local
         self.default_interpreter = default_interpreter
-        self.keys = {p: os.getenv(row['env'], '') for p, row in CATALOG.items()}
+        self.keys = {p: os.getenv(row['env'], '') if allow_local else '' for p, row in CATALOG.items()}
         provider = 'scripted' if default_interpreter.name == 'scripted' else 'openai'
         self.default = ModelSettings(provider=provider, model=default_interpreter.name)
 
     def public(self, state: Session):
         selected = state.model_settings or self.default
-        return {'current': selected.model_dump(exclude={'api_key'}), 'providers': [
+        return {'current': selected.model_dump(exclude={'api_key'}),
+                'default': self.default.model_dump(exclude={'api_key'}),
+                'local_credentials_allowed': self.allow_local, 'providers': [
             {'id': p, 'label': row['label'], 'models': row['models'], 'key_url': row['key_url'],
-             'demo_configured': bool(self.keys[p]) or p=='scripted', 'validation': row['validation']}
+             'demo_configured': bool(self.keys[p]) or p=='scripted', 'validation': row['validation'],
+             'model_details': {model: dict(zip(('label', 'description', 'validation'), MODEL_DETAILS[model])) for model in row['models']}}
             for p, row in CATALOG.items()]}
 
     def candidate(self, payload: SettingsRequest):
@@ -42,6 +46,8 @@ class Settings:
             if key or payload.credential_source != 'demo': raise ValueError('Offline mode does not use credentials.')
         elif payload.credential_source == 'byok':
             if not key: raise ValueError('Enter a provider key to validate this connection.')
+        elif not self.allow_local:
+            raise ValueError('Public mode requires Bring Your Own Key or Offline Demo.')
         elif key:
             raise ValueError('Choose Bring Your Own Key when supplying a key.')
         elif not self.keys[payload.provider]:
@@ -52,4 +58,6 @@ class Settings:
     def interpreter(self, state: Session):
         if state.model_settings is None: return self.default_interpreter
         s = state.model_settings
+        if not self.allow_local and s.provider != 'scripted' and s.credential_source != 'byok':
+            raise ValueError('Public mode requires Bring Your Own Key or Offline Demo.')
         return make_interpreter(s.provider, s.model, s.api_key if s.credential_source=='byok' else self.keys[s.provider])

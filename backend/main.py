@@ -35,17 +35,17 @@ class ActionRequest(StrictModel):
 
 def create_app(directory: Path | None = None, interpreter=None, clock=time.time):
     load_dotenv(ROOT / '.env')
+    production = os.getenv('APP_ENV') == 'production'
     mode = os.getenv('MODEL_MODE', 'live' if os.getenv('OPENAI_API_KEY') else 'scripted')
     if mode not in ('live', 'scripted'): raise ValueError('MODEL_MODE must be live or scripted')
     if interpreter is None:
-        if mode == 'live':
+        if mode == 'live' and not production:
             if not os.getenv('OPENAI_API_KEY'): raise ValueError('Live mode requires OPENAI_API_KEY')
             model = os.getenv('OPENAI_MODEL', 'gpt-6.1-sol')
             validate_selection('openai', model)
             interpreter = LiveInterpreter(os.environ['OPENAI_API_KEY'], model)
         else:
             interpreter = ScriptedInterpreter()
-    production = os.getenv('APP_ENV') == 'production'
     origins = set(os.getenv('ALLOWED_ORIGINS', 'http://localhost:8000,http://127.0.0.1:8000,http://localhost:5173,http://127.0.0.1:5173').split(','))
     if production and not os.getenv('ALLOWED_ORIGINS'): raise ValueError('Set explicit ALLOWED_ORIGINS in production')
     store = Store(directory or Path(os.getenv('DATA_DIR', ROOT / 'data')), os.getenv('SESSION_ENCRYPTION_KEY'))
@@ -53,7 +53,7 @@ def create_app(directory: Path | None = None, interpreter=None, clock=time.time)
     app = FastAPI(title='ClaimFlow', docs_url=None if production else '/api/docs', redoc_url=None)
     app.state.store, app.state.controller, app.state.interpreter = store, controller, interpreter
     model_slots = asyncio.Semaphore(2)
-    settings = Settings(interpreter)
+    settings = Settings(interpreter, allow_local=not production)
     app.state.settings = settings
 
     @app.middleware('http')

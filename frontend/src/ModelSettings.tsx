@@ -5,8 +5,10 @@ import { Button } from './components/Button'
 import { api, type Session } from './api'
 
 type Catalog = {
+  default: { model: string };
+  local_credentials_allowed: boolean;
   current: { provider: string; model: string; credential_source: 'demo' | 'byok'; validated_at: number | null };
-  providers: { id: string; label: string; models: string[]; demo_configured: boolean; key_url: string; validation: string }[];
+  providers: { id: string; label: string; models: string[]; demo_configured: boolean; key_url: string; validation: string; model_details: Record<string,{ label: string; description: string; validation: string }> }[];
 }
 
 export function ModelSettings({ session, onApplied, onBusy, onClose, restoreFocus }: {
@@ -32,6 +34,7 @@ export function ModelSettings({ session, onApplied, onBusy, onClose, restoreFocu
   }
   useEffect(loadCatalog, [])
   const selected = catalog?.providers.find(p => p.id === provider)
+  const modelDetail = selected?.model_details[model]
   async function apply() {
     if (busy || !catalog || (session.messages.length > 0 && !resetConfirmed)) return
     setBusy(true); onBusy(true); setError(''); setSuccess(false)
@@ -51,21 +54,21 @@ export function ModelSettings({ session, onApplied, onBusy, onClose, restoreFocu
     <Dialog.Overlay className="dialog-overlay"/>
     <Dialog.Content onCloseAutoFocus={event => { event.preventDefault(); restoreFocus() }} className="demo-dialog model-settings" onEscapeKeyDown={e => { if (busy) e.preventDefault() }} onPointerDownOutside={e => { if (busy) e.preventDefault() }}>
       <span className="eyebrow">MODEL CONNECTION</span><Dialog.Title>Model settings</Dialog.Title>
-      <Dialog.Description>Choose how ClaimFlow interprets messages. The SOP controls identity, claim access, and actions.</Dialog.Description>
+      <Dialog.Description>Choose your AI model, or explore the Offline Demo without a key. The SOP controls identity, claim access, and actions.</Dialog.Description>
       {catalog ? <form onSubmit={e => { e.preventDefault(); void apply() }}>
-        <p className="settings-current">Current: <strong>{catalog.current.model}</strong><br/><span>{catalog.current.validated_at ? 'Connection validated' : 'Configured · connection not checked this session'} · {catalog.current.credential_source === 'byok' ? 'Your key' : 'Demo configuration'}</span></p>
+        <p className="settings-current">Current: <strong>{catalog.current.model}</strong><br/><span>{catalog.current.provider==='scripted'?'Offline · no connection needed':catalog.current.validated_at ? 'Connection validated this session' : 'Configured · connection not checked this session'} · {catalog.current.provider==='scripted'?'No credentials':catalog.current.credential_source === 'byok' ? 'Your session key' : 'Local configured key'}<br/>Default: {catalog.default.model}</span></p>
         <label htmlFor="model-provider">Provider</label><select id="model-provider" value={provider} disabled={busy} onChange={e => {
           const p = catalog.providers.find(p => p.id === e.target.value)!
-          setProvider(p.id); setModel(p.models[0]); setSource('demo'); setSuccess(false); setError('')
+          setProvider(p.id); setModel(p.models[0]); setSource(p.id==='scripted'||(catalog.local_credentials_allowed&&p.demo_configured)?'demo':'byok'); setSuccess(false); setError('')
           if (keyInput.current) keyInput.current.value = ''
         }}>{catalog.providers.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}</select>
-        <label htmlFor="model-name">Model</label><select id="model-name" value={model} disabled={busy} onChange={e => { setModel(e.target.value); setSuccess(false) }}>{selected?.models.map(m => <option key={m} value={m}>{m}</option>)}</select>
-        <p className="micro muted">{selected?.validation}</p>
+        <label htmlFor="model-name">Model</label><select id="model-name" value={model} disabled={busy} onChange={e => { setModel(e.target.value); setSuccess(false) }}>{selected?.models.map(m => <option key={m} value={m}>{selected.model_details[m]?.label || m} · {selected.model_details[m]?.description}</option>)}</select>
+        <p className="micro muted">{modelDetail?.validation}. Account access is checked when you validate this selection.</p>
         {provider !== 'scripted' && <>
           <label htmlFor="model-credentials">Credentials</label><select id="model-credentials" value={source} disabled={busy} onChange={e => { setSource(e.target.value as typeof source); setSuccess(false); if (keyInput.current) keyInput.current.value = '' }}>
-            <option value="demo">Demo-configured key{selected?.demo_configured ? ' · available' : ' · unavailable'}</option><option value="byok">Bring Your Own Key</option>
+            <option value="demo" disabled={!catalog.local_credentials_allowed}>Local configured key{selected?.demo_configured ? ' · available' : ' · unavailable'}</option><option value="byok">Bring Your Own Key</option>
           </select>
-          {source === 'byok' ? <><label htmlFor="provider-key">API key</label><input id="provider-key" type="password" autoComplete="off" spellCheck={false} maxLength={512} ref={keyInput} disabled={busy} required/><p className="micro muted">Re-enter to validate. Stored encrypted on the backend for this session, never in browser storage. New session removes it. Use a local connection or HTTPS.</p></> : <div><p className="micro muted">{selected?.demo_configured ? 'Uses a backend environment key. The browser never receives it.' : 'No demo key is configured. Choose Bring Your Own Key or another provider.'}</p>{!selected?.demo_configured&&<Button variant="outline" disabled={busy} onClick={()=>{setSource('byok');setSuccess(false)}}>Use my own key</Button>}</div>}
+          {source === 'byok' ? <><label htmlFor="provider-key">API key</label><input id="provider-key" type="password" autoComplete="off" spellCheck={false} maxLength={512} ref={keyInput} disabled={busy} required/><p className="micro muted">Re-enter to validate. Stored encrypted on the backend for this session, never in browser storage. New session removes it. Use a local connection or HTTPS.</p></> : <div><p className="micro muted">{selected?.demo_configured ? 'Configured in the backend environment; connection validation is separate. The browser never receives the key.' : 'No local key is available. Choose Bring Your Own Key or Offline Demo.'}</p>{!selected?.demo_configured&&<Button variant="outline" disabled={busy} onClick={()=>{setSource('byok');setSuccess(false)}}>Use my own key</Button>}</div>}
           <a href={selected?.key_url} target="_blank" rel="noreferrer">Get an API key from {selected?.label} ↗</a>
         </>}
         <p className="settings-reset">Applying clears the conversation and summary, and requires fresh identity verification. Connection validation uses one small model call; provider charges may apply.</p>

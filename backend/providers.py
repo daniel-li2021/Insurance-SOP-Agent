@@ -8,13 +8,32 @@ from .interpreter import INSTRUCTIONS, LiveInterpreter, ModelFailure, ScriptedIn
 from .models import Interpretation, Session
 
 CATALOG = {
-    'openai': {'label': 'OpenAI', 'models': ['gpt-6.1-sol'], 'env': 'OPENAI_API_KEY',
+    'openai': {'label': 'OpenAI', 'models': ['gpt-6.1-sol', 'gpt-6-luna', 'gpt-6-astra', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna'], 'env': 'OPENAI_API_KEY',
                'key_url': 'https://platform.openai.com/api-keys', 'validation': 'Live acceptance checked'},
-    'anthropic': {'label': 'Anthropic Claude', 'models': ['claude-sonnet-5-5'], 'env': 'ANTHROPIC_API_KEY',
+    'anthropic': {'label': 'Anthropic Claude', 'models': ['claude-sonnet-5-5', 'claude-opus-5-5', 'claude-haiku-5-5', 'claude-fable-5-1'], 'env': 'ANTHROPIC_API_KEY',
                   'key_url': 'https://platform.claude.com/settings/keys', 'validation': 'Contract checked; live acceptance pending'},
-    'gemini': {'label': 'Google Gemini', 'models': ['gemini-3.8-flash'], 'env': 'GEMINI_API_KEY',
+    'gemini': {'label': 'Google Gemini', 'models': ['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-3.5-flash-lite', 'gemini-3.1-pro-preview'], 'env': 'GEMINI_API_KEY',
                'key_url': 'https://aistudio.google.com/apikey', 'validation': 'Contract checked; live acceptance pending'},
     'scripted': {'label': 'Offline', 'models': ['scripted'], 'env': '', 'key_url': '', 'validation': 'Deterministic parser; limited language support'},
+}
+
+# Exact text/structured-output IDs checked against official provider docs on 2026-10-17.
+MODEL_DETAILS = {
+    'gpt-6.1-sol': ('GPT-6.1 Sol', 'Balanced', 'Bounded live acceptance checked'),
+    'gpt-6-luna': ('GPT-6 Luna', 'Economical', 'Documented support; live acceptance pending'),
+    'gpt-6-astra': ('GPT-6 Astra', 'Advanced reasoning', 'Documented support; live acceptance pending'),
+    'gpt-5.6-sol': ('GPT-5.6 Sol', 'Earlier generation', 'Documented support; live acceptance pending'),
+    'gpt-5.6-terra': ('GPT-5.6 Terra', 'Earlier generation', 'Documented support; live acceptance pending'),
+    'gpt-5.6-luna': ('GPT-5.6 Luna', 'Earlier generation', 'Documented support; live acceptance pending'),
+    'claude-sonnet-5-5': ('Claude Sonnet 5.5', 'Speed and intelligence', 'Documented support; live acceptance pending'),
+    'claude-opus-5-5': ('Claude Opus 5.5', 'Complex knowledge work', 'Documented support; live acceptance pending'),
+    'claude-haiku-5-5': ('Claude Haiku 5.5', 'Low latency extraction', 'Documented support; live acceptance pending'),
+    'claude-fable-5-1': ('Claude Fable 5.1', 'Demanding reasoning', 'Documented support; live acceptance pending'),
+    'gemini-3.8-flash': ('Gemini 3.8 Flash', 'Current Flash', 'Documented support; live acceptance pending'),
+    'gemini-3.6-flash': ('Gemini 3.6 Flash', 'Previous Flash', 'Documented support; live acceptance pending'),
+    'gemini-3.5-flash-lite': ('Gemini 3.5 Flash-Lite', 'Fast and economical', 'Documented support; live acceptance pending'),
+    'gemini-3.1-pro-preview': ('Gemini 3.1 Pro Preview', 'Preview', 'Documented support; live acceptance pending'),
+    'scripted': ('Offline Demo', 'No API key needed', 'Limited deterministic parser'),
 }
 
 class Interpreter(Protocol):
@@ -57,7 +76,7 @@ class NativeInterpreter:
             headers = {'x-api-key': self._key.get_secret_value(), 'anthropic-version': '2023-06-01'}
             body = {'model': self.name, 'max_tokens': 2200, 'system': INSTRUCTIONS,
                     'messages': [{'role': 'user', 'content': content}],
-                    'output_config': {'format': {'type': 'json_schema', 'schema': schema}}}
+                    'output_config': {'effort': 'low', 'format': {'type': 'json_schema', 'schema': schema}}}
         else:
             url = f'https://generativelanguage.googleapis.com/v1beta/models/{self.name}:generateContent'
             headers = {'x-goog-api-key': self._key.get_secret_value()}
@@ -74,8 +93,11 @@ class NativeInterpreter:
             if self.provider == 'anthropic':
                 if data['stop_reason'] != 'end_turn': raise ValueError('Incomplete output')
                 blocks = data['content']
-                if len(blocks) != 1 or blocks[0]['type'] != 'text': raise ValueError('Unexpected content')
-                output = blocks[0]['text']
+                if any(b['type'] not in ('text', 'thinking', 'redacted_thinking') for b in blocks):
+                    raise ValueError('Unexpected content')
+                text_blocks = [b['text'] for b in blocks if b['type'] == 'text']
+                if len(text_blocks) != 1: raise ValueError('Unexpected text content')
+                output = text_blocks[0]
                 usage = data['usage']
                 tokens = sum(usage.get(k, 0) for k in ('input_tokens', 'output_tokens', 'cache_creation_input_tokens', 'cache_read_input_tokens'))
             else:

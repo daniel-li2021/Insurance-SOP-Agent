@@ -116,3 +116,37 @@ def test_settings_service_is_independent_of_controller(monkeypatch):
     candidate=service.candidate(request)
     assert candidate.api_key==SECRET and SECRET not in str(candidate)
     assert SECRET not in str(service.public(Session(model_settings=candidate)))
+
+
+def test_public_mode_never_uses_local_keys_even_with_live_env(tmp_path, monkeypatch):
+    monkeypatch.setenv('APP_ENV', 'production')
+    monkeypatch.setenv('ALLOWED_ORIGINS', 'https://claimflow.example')
+    monkeypatch.setenv('MODEL_MODE', 'live')
+    monkeypatch.setenv('OPENAI_API_KEY', 'private-local-config')
+    monkeypatch.setenv('ANTHROPIC_API_KEY', 'private-anthropic-config')
+    with TestClient(create_app(tmp_path, clock=lambda: NOW), base_url='https://claimflow.example') as c:
+        state = c.post('/api/session').json()
+        c.headers['x-csrf-token'] = state['csrf']
+        catalog = c.get('/api/settings').json()
+        assert state['model'] == 'scripted' and catalog['default']['model'] == 'scripted'
+        assert not catalog['local_credentials_allowed']
+        assert not any(p['demo_configured'] for p in catalog['providers'] if p['id'] != 'scripted')
+        assert 'private-local-config' not in str(catalog)
+        for provider, model in [('openai', 'gpt-6.1-sol'), ('anthropic', 'claude-opus-5-5')]:
+            response = change(c, provider=provider, model=model, credential_source='demo', api_key=None)
+            assert response.status_code == 409 and 'Public mode' in response.text
+        assert send(c, 'hello').status_code == 200  # Offline needs no provider key.
+
+
+def test_private_mode_reuses_configured_keys_and_separates_defaults(monkeypatch):
+    from backend.settings import Settings, SettingsRequest
+    from backend.models import Session
+    monkeypatch.setenv('ANTHROPIC_API_KEY', 'private-local-config')
+    service = Settings(ScriptedInterpreter())
+    selection = SettingsRequest(request_id=uuid4(), version=0, provider='anthropic',
+                                model='claude-opus-5-5', credential_source='demo')
+    candidate = service.candidate(selection)
+    assert candidate.api_key is None and service.keys['anthropic'] == 'private-local-config'
+    public = service.public(Session(model_settings=candidate))
+    assert public['current']['model'] == 'claude-opus-5-5' and public['default']['model'] == 'scripted'
+    assert public['current']['validated_at'] is None and 'private-local-config' not in str(public)
