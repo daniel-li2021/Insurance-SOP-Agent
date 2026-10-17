@@ -1,6 +1,8 @@
 # Manual Render deployment
 
-Status: prepared locally for review; **not deployed**. Baseline: GitHub `main` at `b5bc3e9`. No Render resources, GitHub connections, domains or secrets were created by this preparation.
+Status: **[public demo live](https://claimflow-demo.onrender.com/)**, deployed manually by the owner. The initial preparation baseline was GitHub `main` at `b5bc3e9`; that preparation created no Render resources.
+
+A short public smoke check on October 17, 2026 passed trusted HTTPS, the UI and two hashed assets, offline health (`328f5c17f69b` fixtures), Secure/HttpOnly/SameSite cookies, CSRF and foreign-origin rejection, disabled owner credentials, hidden docs/schema/private-file paths, synthetic identity verification and summary preview. No paid model calls or Render configuration changes were made. The owner requested no further inspection; public restart persistence, disk configuration, live providers, load and availability were not checked. The subsequent header-label change is committed source and requires a manual Render deploy to appear publicly.
 
 ## Hosting profile
 

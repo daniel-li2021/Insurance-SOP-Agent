@@ -142,10 +142,13 @@ test('Evaluation Lab replays actual policy and resets results',async({page})=>{
   await page.getByRole('tab',{name:'Evaluation Lab',exact:true}).click()
   await page.getByRole('button',{name:'Run scenario',exact:true}).click()
   await expect(page.getByText('All assertions passed', {exact:true})).toBeVisible()
-  await expect(page.locator('.lab-mode')).toContainText('No model calls')
-  for (const viewport of [{width:1440,height:900},{width:390,height:844}]) {
+  await expect(page.locator('.app-header .lab-mode')).toContainText('No model calls')
+  await expect(page.locator('.page-heading .lab-mode')).toHaveCount(0)
+  for (const viewport of [{width:1440,height:900},{width:1024,height:900},{width:390,height:844}]) {
     await page.setViewportSize(viewport)
     await expect(page.locator('.result-body .replay-step').first()).toBeInViewport()
+    await expect(page.locator('.app-header .lab-mode')).toBeInViewport()
+    await expect(page.getByRole('button',{name:'Model settings',exact:true})).toBeInViewport()
     expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true)
     await page.screenshot({path:`../data/ui-adjustments/lab-${viewport.width}.png`,fullPage:true})
   }
@@ -154,6 +157,8 @@ test('Evaluation Lab replays actual policy and resets results',async({page})=>{
   await expect(page.locator('.assertion').first()).toBeVisible()
   await page.getByRole('button',{name:'Reset result',exact:true}).click()
   await expect(page.getByRole('button',{name:'Run scenario',exact:true})).toBeVisible()
+  await page.getByRole('tab',{name:'Agent Playground',exact:true}).click()
+  await expect(page.locator('.lab-mode')).toHaveCount(0)
 })
 
 test('mobile inspector traps and restores keyboard focus; no horizontal overflow',async({page})=>{

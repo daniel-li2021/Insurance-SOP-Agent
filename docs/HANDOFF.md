@@ -21,7 +21,7 @@ After transfer, confirm the repository root has `README.md`, `requirement.md`, `
 
 | Assignment requirement | Implementation / reviewer path |
 | --- | --- |
-| Hosted URL **or Docker image/repository with clear setup** | Root Dockerfile, Compose and README setup provide the repository alternative now. Render preparation is included; a public URL remains pending your manual deployment. |
+| Hosted URL **or Docker image/repository with clear setup** | Root Dockerfile, Compose and README setup provide the repository alternative now. The [public Render demo](https://claimflow-demo.onrender.com/) is live; setup and bounded smoke evidence are in the deployment guide. |
 | Accept an API auth token for an AI model | Model settings accepts BYOK for supported providers, with a paid validation probe. Local `.env` setup is documented in [Usage](USAGE.md). Public startup remains offline. |
 | Simple natural-language test UI | React Playground with editable guided synthetic scenarios; live mode uses structured interpretation. Offline Demo is a limited parser and makes no model calls. |
 | Full four-phase workflow | Standard Claim exercises identity verification, intent resolution with remembered hints, grounded claim discussion and explicit summary Send/Skip. Inspector exposes the decisions. |

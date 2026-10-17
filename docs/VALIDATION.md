@@ -1,3 +1,7 @@
+# Public demo smoke and header label — October 17, 2026
+
+[ClaimFlow is live](https://claimflow-demo.onrender.com/). Trusted HTTPS, UI/assets, offline health, session-cookie flags, CSRF/foreign-origin rejection, hidden private/schema paths, disabled local credentials, synthetic verification and summary preview passed a short public smoke check. See [deployment details and limits](DEPLOYMENT.md). The Lab badge was then moved into the header and the production frontend build passed. No further inspection or browser/backend tests were run after the owner requested stopping checks; no paid model calls or deployment actions were made.
+
 # Render portfolio preparation — October 17, 2026
 
 **63 focused backend tests**, including all 23 shared policy scenarios, the production frontend/Docker builds, and **three Chromium journeys against the local production Docker image pass**. Production origin checks, Secure cookies, hidden schema/files, offline startup, disabled local keys and persisted session/token state are covered. The Blueprint passes Render's published JSON Schema. No paid model calls or Render deployments were made. Exact local image identity, scope and pending hosted checks are in [the deployment guide](DEPLOYMENT.md#preparation-validation).

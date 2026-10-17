@@ -2,6 +2,8 @@
 
 An insurance support demo that combines natural-language interpretation with a deterministic business workflow. Explore a fictional claim, inspect the decisions behind each answer, and review an email summary with explicit Send or Skip consent.
 
+**[Try the live demo](https://claimflow-demo.onrender.com/)** · Starts offline; no API key needed for guided scenarios.
+
 `VERIFY_ID → RESOLVE_INTENT → PROCESS_CASE → POST_PROCESS`
 
 ![ClaimFlow discussion summary using synthetic records](docs/screenshots/post-uat-summary.png)
@@ -30,11 +32,11 @@ For live natural-language interpretation, open **Model settings**, choose a prov
 
 Python 3.11+ and Node 22 setup, frontend development, key retention and detailed controls are in the [usage guide](docs/USAGE.md).
 
-## Prepare your Render demo
+## Render demo
 
 The repository includes a [Render Blueprint](render.yaml) for one Docker web service with a 1 GB persistent disk. It starts offline, disables owner environment keys in public mode, uses secure session cookies, and disables automatic deploys. **The configured compute and disk are paid resources; review the dashboard price before creating them.**
 
-Follow the [manual Render deployment guide](docs/DEPLOYMENT.md) after connecting GitHub. Creating/applying the service starts its first deployment, even with automatic deploys off. No Render service has been created or deployed as part of this preparation; there is no hosted demo URL yet.
+The [public demo](https://claimflow-demo.onrender.com/) is live. A short HTTPS/offline smoke check passed on October 17, 2026: UI/assets, health, session security, synthetic identity verification and summary preview. This is a bounded smoke check, not an availability or load guarantee. See the [manual Render guide](docs/DEPLOYMENT.md) for setup and future releases; automatic deploys are disabled in the Blueprint.
 
 ## Verify and hand off
 
@@ -45,7 +47,7 @@ npm --prefix frontend run build
 
 Install local dependencies first using the [usage guide](docs/USAGE.md). Historical model and browser acceptance is recorded in [validation evidence](docs/VALIDATION.md); the [deployment guide](docs/DEPLOYMENT.md#preparation-validation) records checks for this preparation. Small synthetic probes do not establish general model reliability.
 
-To download the source and upload it to the original assignment repository, follow the [GitHub handoff and requirement checklist](docs/HANDOFF.md). The Docker repository with setup instructions satisfies the assignment's delivery alternative; hosting can be completed manually later.
+To download the source and upload it to the original assignment repository, follow the [GitHub handoff and requirement checklist](docs/HANDOFF.md). The Docker repository with setup instructions satisfies the assignment's delivery alternative; the hosted demo is also available at the link above.
 
 ## Scope and documentation
 

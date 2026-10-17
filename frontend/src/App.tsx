@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import * as Tabs from '@radix-ui/react-tabs'
 import * as Dialog from '@radix-ui/react-dialog'
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, CheckCheck, CheckCircle2, ChevronDown, ChevronRight, Circle, CircleAlert, Clock3, ClipboardList, FlaskConical, Info, Loader2, LockKeyhole, Mail, Maximize2, MessageSquare, PanelRightClose, PanelRightOpen, Plus, RotateCcw, ShieldCheck, X } from 'lucide-react'
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, CheckCheck, CheckCircle2, ChevronDown, ChevronRight, Circle, CircleAlert, Clock3, ClipboardList, Database, FlaskConical, Info, Loader2, LockKeyhole, Mail, Maximize2, MessageSquare, PanelRightClose, PanelRightOpen, Plus, RotateCcw, ShieldCheck, X } from 'lucide-react'
 import { ModelSettings } from './ModelSettings'
 import { IdentityVerification } from './IdentityVerification'
 import { Button } from './components/Button'
@@ -268,6 +268,7 @@ export default function App() {
   return <Tabs.Root value={tab} onValueChange={setTab} className="app-shell">
     <header className="app-header"><a href="/" aria-label="ClaimFlow home"><Brand/></a><span className="header-divider"/><span className="workspace-label">Claims support workspace</span>
       <Tabs.List className="main-tabs" aria-label="Workspace"><Tabs.Trigger value="playground"><MessageSquare size={16}/><span>Agent Playground</span></Tabs.Trigger><Tabs.Trigger value="lab"><FlaskConical size={16}/><span>Evaluation Lab</span></Tabs.Trigger></Tabs.List>
+      {tab==='lab'&&<span className="lab-mode"><Database size={15} aria-hidden="true"/><strong>Scripted tests</strong><span>No model calls</span></span>}
       <Button ref={settingsButton} variant="ghost" size="sm" disabled={!session||busy||!!pending} onClick={()=>setSettingsOpen(true)}>Model settings</Button><span className="demo-label"><span/>Synthetic data</span>
     </header>
     <Tabs.Content value="playground" className={'workspace '+(playgroundExpanded?'playground-expanded':'')} forceMount hidden={tab!=='playground'}>
@@ -337,7 +338,7 @@ function EvaluationLab({ session }: { session: Session | null }) {
     setRunning(true);setError('')
     try{const result=await api<Evaluation>('/evaluations/'+selected,{},session.csrf);setResults(old=>({...old,[selected]:result}))}catch(e){setError((e as Error).message)}finally{setRunning(false)}
   }
-  return <><div className="page-heading"><div><div className="eyebrow">EVALUATION LAB</div><h1>Trust, made testable.</h1><p>Replay the scenarios. Inspect the decisions. <span className="lab-mode">Scripted tests · No model calls</span></p></div></div>
+  return <><div className="page-heading"><div><div className="eyebrow">EVALUATION LAB</div><h1>Trust, made testable.</h1><p>Replay the scenarios. Inspect the decisions.</p></div></div>
     <main className="lab-layout"><aside className="scenario-list"><div className="scenario-list-header"><h2>Test scenarios</h2><span>{scenarios.length}</span></div>{[...new Set(scenarios.map(s=>s.category))].map(category=><div key={category}><h3>{category}</h3>{scenarios.filter(s=>s.category===category).map(s=><button key={s.id} onClick={()=>{setSelected(s.id);setError('')}} className={selected===s.id?'selected':''}><span>{s.name}</span>{results[s.id]?(results[s.id].passed?<CheckCircle2 size={15} className="status-good"/>:<X size={15} className="status-bad"/>):<ChevronRight size={14}/>}</button>)}</div>)}</aside>
       <section className="evaluation-detail" aria-label="Scenario result"><div className="evaluation-heading"><div className="evaluation-summary"><span className="eyebrow">{scenario?.category}</span><h2>{scenario?.name || 'Loading scenarios…'}</h2><p>{scenario?.description}</p></div><div className="evaluation-actions"><Button disabled={running||!session} onClick={run}>{running?<Loader2 size={15} className="spin"/>:result?<RotateCcw size={15}/>:<FlaskConical size={15}/>} {running?'Running…':result?'Replay scenario':'Run scenario'}</Button>{result&&<><span className={result.passed?'evaluation-pass':'status-bad'}>{result.passed?<CheckCircle2 size={16}/>:<X size={16}/>} {result.passed?'All assertions passed':'Needs attention'}</span><span className="micro muted">{result.duration_ms} ms</span><Button variant="ghost" size="sm" onClick={()=>setResults(old=>{const next={...old};delete next[selected];return next})}>Reset result</Button></>}</div></div>
       {error&&<p role="alert" className="lab-error">{error}</p>}

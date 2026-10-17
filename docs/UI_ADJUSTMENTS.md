@@ -1,3 +1,9 @@
+# Evaluation Lab header follow-up — October 17, 2026
+
+Moved “Scripted tests / No model calls” from the Lab subtitle into a compact badge in the global header, visible only while Evaluation Lab is selected. Narrow layouts wrap the header to keep the badge and controls readable. Scenario replay, evidence tabs and policy behavior are unchanged. The existing Lab browser test now checks header placement and tablet visibility as well as desktop/mobile overflow.
+
+The production TypeScript/Vite build passes. No additional browser/backend checks were run after the owner requested no further inspection. The earlier validation below remains historical. Apply a manual Render deploy to publish this source change.
+
 # Interface adjustments — October 17, 2026
 
 - Removed the persistent 12-new-sessions/hour creation cap. New Session still replaces the old session, clears identity/conversation/consent, and follows the existing optional encrypted-key retention preference. Turn, identity-attempt, model-settings, summary-action, evaluation, concurrency and token limits remain in place.
