@@ -2,7 +2,6 @@ import os
 import secrets
 import time
 import asyncio
-import math
 from pathlib import Path
 from typing import Literal
 from uuid import UUID
@@ -208,10 +207,6 @@ def create_app(directory: Path | None = None, interpreter=None, clock=time.time)
 
     @app.post('/api/session')
     def start(request: Request, response: Response):
-        try:
-            store.limit('new:' + client_key(request), 12, 3600, clock())
-        except Limited as error:
-            raise Limited(f'New session limit reached (12 per hour). Try again in {math.ceil(error.retry_after / 60)} minutes. Refreshing will not reset this limit. Your current session has been kept.', error.retry_after) from None
         old = request.cookies.get('claimflow_session')
         fresh = Session(model=interpreter.name)
         if old:

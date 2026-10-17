@@ -95,18 +95,18 @@ test('same session changed in another tab requires one explicit safe retry', asy
   await expect(page.locator('.user-message').last()).toContainText('My name is Margaret Chen.')
 })
 
-test('rate-limited reset preserves conversation and Recover does not create another session', async ({ page }) => {
+test('failed reset preserves conversation and Recover does not create another session', async ({ page }) => {
   await page.goto('/')
   await message(page, 'Hello')
   let creations = 0
   await page.route('**/api/session', async route => {
     if (route.request().method() !== 'POST') return route.continue()
     creations++
-    await route.fulfill({ status: 429, json: { detail: 'New session limit reached (12 per hour). Try again in 20 minutes. Refreshing will not reset this limit. Your current session has been kept.' } })
+    await route.fulfill({ status: 503, json: { detail: 'Could not start a new session. Your current session has been kept.' } })
   })
   await page.getByRole('button', { name: 'New session', exact: true }).click()
   await page.getByRole('button', { name: 'Start new session', exact: true }).click()
-  await expect(page.getByRole('dialog').getByRole('alert')).toContainText('12 per hour')
+  await expect(page.getByRole('dialog').getByRole('alert')).toContainText('Your current session has been kept')
   await page.getByRole('button', { name: 'Keep conversation', exact: true }).click()
   await expect(page.locator('.user-message')).toHaveCount(1)
   await page.getByRole('button', { name: 'Recover', exact: true }).click()

@@ -194,19 +194,19 @@ def test_human_pause_acknowledged_once_preserves_context_until_explicit_return(a
     assert s.events[-1].code == 'CHAT_RESUMED'
 
 
-def test_session_rate_limit_preserves_current_session_and_has_real_retry_window(tmp_path):
+def test_new_sessions_have_no_hourly_creation_cap_and_still_expire(tmp_path):
     now = [NOW + 1]
     app = create_app(tmp_path, ScriptedInterpreter(), clock=lambda: now[0])
     with TestClient(app) as c:
-        for _ in range(12): assert c.post('/api/session').status_code == 200
-        before = c.get('/api/session').json()
-        response = c.post('/api/session')
-        assert response.status_code == 429
-        assert '12 per hour' in response.json()['detail'] and 'Refreshing will not reset' in response.json()['detail']
-        assert int(response.headers['retry-after']) == 3599
-        assert c.get('/api/session').json()['csrf'] == before['csrf']
-        now[0] += 3600
-        assert c.post('/api/session').status_code == 200
+        previous_csrf = None
+        for _ in range(15):
+            response = c.post('/api/session')
+            assert response.status_code == 200
+            fresh = response.json()
+            assert fresh['csrf'] != previous_csrf
+            assert not fresh['verified'] and fresh['messages'] == []
+            previous_csrf = fresh['csrf']
+        assert c.get('/api/session').json()['csrf'] == previous_csrf
         now[0] += 86401
         assert c.get('/api/session').status_code == 401
 

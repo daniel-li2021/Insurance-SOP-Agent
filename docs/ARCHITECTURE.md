@@ -52,7 +52,7 @@ React owns rendering and draft input; the backend owns all workflow state. Radix
 
 ## Operational limits
 
-The optional verification form uses `/api/verify` and the existing turn lease, limits and controller identity gate, without model inference. A separate `assistance_paused` flag preserves the SOP phase while an explicit human request pauses chat; it provides no handoff or authorization. Session recovery synchronizes stale CSRF/version state only on explicit operations and preserves the 12-new-sessions/hour limit. See [verification and recovery details](UX_RECOVERY.md).
+The optional verification form uses `/api/verify` and the existing turn lease, limits and controller identity gate, without model inference. A separate `assistance_paused` flag preserves the SOP phase while an explicit human request pauses chat; it provides no handoff or authorization. Session recovery synchronizes stale CSRF/version state only on explicit operations and has no hourly new-session creation cap; other operation limits remain enforced. See [verification and recovery details](UX_RECOVERY.md).
 
 This is a single-instance demo with lazy retention cleanup, conservative proxy rate limits, bounded model tokens, and no separate worker. All in-flight work can be recovered after its lease expires; previous committed messages survive process restart. Authorization is independently checked after model work and on every action/read. Active grants are evaluator-only, not an externally revocable authorization service. A production system needs real authentication, stronger representative proof, approved retention and insurer rules, real action integrations, and availability/backup procedures.
 

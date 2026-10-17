@@ -97,6 +97,8 @@ Explicit pause/return controls work without live inference, including provider f
 
 ## New Session investigation
 
+**October 17 follow-up:** the hourly creation cap described below was subsequently removed at user request. Other operation limits and recovery behavior remain. See [UI adjustments](UI_ADJUSTMENTS.md).
+
 Reproduced before changing the session code:
 
 - Resetting a session with a shared browser cookie leaves another tab's old CSRF token behind. Its next mutation returns **403**. The UI previously recovered **409** versions only; it now reads the current session on either response, without replaying the action. A replaced session discards the old pending operation and preserves the chat draft for review. Same-session version changes offer an explicit retry using the current version and original request ID.
