@@ -285,7 +285,7 @@ test('sent summary is replaced safely; compact summaries preserve corrected paym
     await expect(page.locator('.summary-payment')).toHaveText('$0.00')
     await page.evaluate(()=>new Promise<void>(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve()))))
     await page.screenshot({path:`../data/small-polish/single-${name}.png`})
-    await page.getByRole('button',{name:'Skip',exact:true}).scrollIntoViewIfNeeded()
+    await page.locator('.summary-actions').scrollIntoViewIfNeeded()
     await expect(page.getByRole('button',{name:'Send simulated email',exact:true})).toBeInViewport({ratio:1})
     await expect(page.getByRole('button',{name:'Skip',exact:true})).toBeInViewport({ratio:1})
     await page.screenshot({path:`../data/small-polish/single-${name}-controls.png`})
@@ -314,7 +314,7 @@ test('sent summary is replaced safely; compact summaries preserve corrected paym
       await page.evaluate(()=>new Promise<void>(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve()))))
       await page.screenshot({path:`../data/small-polish/multi-${name}-${claim}.png`})
     }
-    await page.getByRole('button',{name:'Skip',exact:true}).scrollIntoViewIfNeeded()
+    await page.locator('.summary-actions').scrollIntoViewIfNeeded()
     await expect(page.getByRole('button',{name:'Send simulated email',exact:true})).toBeInViewport({ratio:1})
     await page.screenshot({path:`../data/small-polish/multi-${name}-controls.png`})
     expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true)

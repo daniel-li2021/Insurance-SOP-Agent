@@ -1,3 +1,17 @@
+# Playground space and key status — October 17, 2026
+
+The main model status now shows a prominent amber **Missing API key** button whenever the backend reports `model_connection.ready=false`. It replaces the Live label and opens Model settings. The existing composer notice remains visible. Offline and configured connections keep their existing status; key presence/validation, provider calls and authorization logic are unchanged.
+
+The four workflow steps now form a vertical rail to the left of the conversation. Desktop shows labels; mobile uses compact numbered steps while retaining accessible labels, current-step semantics and tooltips. The Workflow Inspector stays on the right on desktop and in its existing mobile drawer.
+
+**Expand playground**, in the assistant header, hides the Agent Playground / Claims support heading and subtitle. **Restore playground** reverses it. The workflow rail, key status, New session, draft and conversation remain available. Expansion is page state only. The input now starts at one row with a 30px minimum text area and tighter vertical padding; the Send target remains 44px and multiline input still uses Shift + Enter.
+
+Validation: the production TypeScript/Vite build and **five focused local offline Chromium journeys pass**: missing-key/settings/expansion, complete summary/Send/refresh, multi-claim summary replacement, mobile inspector/focus/short viewports, and mobile verification form. Assertions cover desktop 1440×1000 and mobile 390×844 expansion, vertical rail placement, draft preservation, restoration, more than 25px of additional conversation height from hiding the heading, input height below 45px, visible status/composer and no horizontal overflow. Existing mobile checks additionally cover 320×568, 390×500 and 720×450. Screenshots under ignored `data/playground-space/` were visually inspected. An initial mobile grid override was corrected; summary controls are scrolled as a group for full visibility.
+
+No backend behavior changed, so prior backend evidence is reused. No new paid API calls, full suites, Docker rebuild or public deployment were run. Real mobile keyboards remain unverified.
+
+---
+
 # Playground transcript display — October 17, 2026
 
 The backend privacy policy, identity parser, verification rules, authorization checks, audit events and persisted transcript are unchanged. Playground keeps a separate React state map of the page's own submitted text keyed by the confirmed user-message/request ID. Manual chat and Guided Scenario show the original submitted message; Optional Form shows labeled values from precisely the submitted fields. Nothing is reconstructed from fixtures, historical messages or verification results. Unrecognized and incomplete identities can display their own submitted text too.

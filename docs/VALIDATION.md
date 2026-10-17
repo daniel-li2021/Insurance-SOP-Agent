@@ -1,3 +1,7 @@
+# Playground space and key-status follow-up — October 17, 2026
+
+The production frontend build and **five focused local Chromium journeys pass** after adding the visible missing-key status, reversible heading collapse, left workflow rail and shorter composer. Desktop/mobile screenshots were visually inspected. See [UX Recovery](UX_RECOVERY.md) for coverage and limits. Backend code is unchanged; prior backend evidence is reused, with no new paid model calls or Docker rebuild.
+
 # Final small polish — October 17, 2026
 
 **114 focused backend checks**, including the existing 23 policy scenarios, **four local Chromium journeys**, and the production TypeScript/Vite build pass. Three pre-edit live turns did not reproduce the exact reported payment failure; a valid missing-topic interpretation reproduced it deterministically. Five final live turns passed payment/DOB recovery and document-exhaustion acceptance, using the existing local `.env`. All eight live calls used **10,117 tokens**, with no retries. See the [scope, investigation, screenshots and limits](SMALL_POLISH.md) and [sanitized receipt](evidence/small-polish-live.json).

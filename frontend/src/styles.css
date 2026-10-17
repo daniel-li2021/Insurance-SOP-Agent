@@ -156,4 +156,28 @@ h1,h2,h3,p { margin:0; }
 .representative-state h3 { font-size:var(--text-small); font-weight:600; }
 .connection-notice { font-size:var(--text-label); line-height:1.6; margin-bottom:8px; color:var(--muted); }
 .connection-notice button { color:var(--accent); text-decoration:underline; }
+.connection-missing { background:#fff4dd; border:1px solid #e7bf6b; border-radius:7px; padding:7px 10px; color:#7a4b0b; font-weight:600; text-align:left; }
+.connection-missing svg { flex-shrink:0; }
+.playground-heading.compact { justify-content:flex-end; padding-bottom:10px; }
+.playground-heading.compact .heading-actions { flex-direction:row; align-items:center; flex-wrap:wrap; padding-top:0; gap:12px; }
+.chat-panel .panel-heading { flex:1; min-width:0; }
+.chat-panel .panel-heading p { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.chat-panel .panel-header>.button,.chat-agent-icon { flex-shrink:0; }
+.composer { padding:8px 12px; align-items:center; }
+.composer textarea { min-height:30px; }
+.playground-layout { grid-template-columns:128px minmax(0,1fr) 326px; gap:16px; }
+.playground-layout.inspector-hidden { grid-template-columns:128px minmax(0,1fr); }
+.playground-layout>.phase-strip { display:flex; flex-direction:column; align-self:start; height:auto; margin:0; padding:16px 10px; gap:20px; }
+.playground-layout>.phase-strip li { flex:none; min-height:40px; gap:8px; }
+.playground-layout>.phase-strip .phase-number { flex-shrink:0; }
+@media(min-width:1450px) { .playground-layout { grid-template-columns:128px minmax(0,1fr) 350px; } .playground-layout.inspector-hidden { grid-template-columns:128px minmax(0,1fr); } }
+@media(min-width:801px) and (max-width:1100px) { .playground-layout { grid-template-columns:110px minmax(0,1fr) 290px; gap:12px; } .playground-layout.inspector-hidden { grid-template-columns:110px minmax(0,1fr); } }
+@media(max-width:800px) {
+  .playground-layout,.playground-layout.inspector-hidden { grid-template-columns:40px minmax(0,1fr); gap:8px; }
+  .playground-layout>.phase-strip { padding:12px 4px; gap:16px; }
+  .playground-layout>.phase-strip li { justify-content:center; }
+  .playground-layout .phase-name { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
+  .chat-panel .panel-header { padding-inline:10px; gap:6px; }
+  .chat-panel .chat-agent-icon { display:none; }
+}
 @media(max-width:680px) { .verification-fields { grid-template-columns:minmax(0,1fr); } .verification-row select, .verification-row input { font-size:16px; } }
