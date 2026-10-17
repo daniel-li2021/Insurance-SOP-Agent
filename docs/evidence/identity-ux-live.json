@@ -1,0 +1,165 @@
+{
+  "checked_at": "2026-10-17T11:15:43.112617+00:00",
+  "model": "gpt-6.1-sol",
+  "prompt_version": "claimflow-extract-v4",
+  "fixture_version": "328f5c17f69b",
+  "calls": 5,
+  "reserved_token_cap": 60000,
+  "actual_tokens": 6321,
+  "passed": true,
+  "results": [
+    {
+      "scenario": "structured",
+      "passed": true,
+      "verified": true,
+      "representative": false,
+      "events": [
+        "INTERPRETED",
+        "IDENTITY_EVALUATED",
+        "PHASE_CHANGED",
+        "CLAIMS_READ",
+        "CASE_CLARIFICATION"
+      ],
+      "fields": [
+        {
+          "field": "name",
+          "subject": "caller",
+          "source_supported": true
+        },
+        {
+          "field": "dob",
+          "subject": "caller",
+          "source_supported": true
+        },
+        {
+          "field": "phone",
+          "subject": "caller",
+          "source_supported": true
+        }
+      ],
+      "tokens": 1265,
+      "latency_ms": 5287
+    },
+    {
+      "scenario": "natural-us-date",
+      "passed": true,
+      "verified": true,
+      "representative": false,
+      "events": [
+        "INTERPRETED",
+        "IDENTITY_EVALUATED",
+        "PHASE_CHANGED",
+        "CLAIMS_READ",
+        "CASE_CLARIFICATION"
+      ],
+      "fields": [
+        {
+          "field": "name",
+          "subject": "caller",
+          "source_supported": true
+        },
+        {
+          "field": "dob",
+          "subject": "caller",
+          "source_supported": true
+        },
+        {
+          "field": "phone",
+          "subject": "caller",
+          "source_supported": true
+        }
+      ],
+      "tokens": 1280,
+      "latency_ms": 4242
+    },
+    {
+      "scenario": "accumulated-name",
+      "passed": true,
+      "verified": false,
+      "representative": false,
+      "events": [
+        "INTERPRETED",
+        "IDENTITY_EVALUATED",
+        "VERIFICATION_REQUESTED"
+      ],
+      "fields": [
+        {
+          "field": "name",
+          "subject": "caller",
+          "source_supported": true
+        }
+      ],
+      "tokens": 1185,
+      "latency_ms": 3431
+    },
+    {
+      "scenario": "accumulated-dob-phone",
+      "passed": true,
+      "verified": true,
+      "representative": false,
+      "events": [
+        "INTERPRETED",
+        "IDENTITY_EVALUATED",
+        "VERIFICATION_REQUESTED",
+        "INTERPRETED",
+        "IDENTITY_EVALUATED",
+        "PHASE_CHANGED",
+        "CLAIMS_READ",
+        "CASE_CLARIFICATION"
+      ],
+      "fields": [
+        {
+          "field": "dob",
+          "subject": "caller",
+          "source_supported": true
+        },
+        {
+          "field": "phone",
+          "subject": "caller",
+          "source_supported": true
+        }
+      ],
+      "tokens": 1307,
+      "latency_ms": 3993
+    },
+    {
+      "scenario": "ambiguous-dob",
+      "passed": true,
+      "verified": false,
+      "representative": false,
+      "events": [
+        "INTERPRETED",
+        "IDENTITY_EVALUATED",
+        "VERIFICATION_REQUESTED"
+      ],
+      "fields": [
+        {
+          "field": "name",
+          "subject": "caller",
+          "source_supported": true
+        },
+        {
+          "field": "phone",
+          "subject": "caller",
+          "source_supported": true
+        },
+        {
+          "field": "id_last4",
+          "subject": "caller",
+          "source_supported": true
+        }
+      ],
+      "tokens": 1284,
+      "latency_ms": 4150
+    }
+  ],
+  "baseline": {
+    "prompt_version": "claimflow-extract-v3",
+    "calls": 2,
+    "actual_tokens": 2516,
+    "fresh_structured_verified": true,
+    "fresh_natural_verified": true,
+    "form_verified_without_model": true
+  },
+  "limitations": "Five synthetic OpenAI turns through the HTTP path; not broad identity/model reliability. Baseline is a separate two-call pre-edit observation. No real customer data, claim mutations or delivery."
+}

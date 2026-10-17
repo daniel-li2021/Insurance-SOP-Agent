@@ -77,10 +77,10 @@ class Store:
     def fingerprint(self, value: str):
         return hmac.new(self.digest_key, value.encode(), hashlib.sha256).hexdigest()
 
-    def create(self, now: float) -> tuple[str, str, Session]:
+    def create(self, now: float, initial: Session | None = None) -> tuple[str, str, Session]:
         cookie = secrets.token_urlsafe(32)
         csrf = secrets.token_urlsafe(32)
-        s = Session()
+        s = initial if initial is not None else Session()
         with self.db() as db:
             db.execute('DELETE FROM requests WHERE session_id IN (SELECT id FROM sessions WHERE updated < ?)', (now - 86400,))
             db.execute('DELETE FROM sessions WHERE updated < ?', (now - 86400,))

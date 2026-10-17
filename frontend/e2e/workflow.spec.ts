@@ -252,10 +252,13 @@ test('BYOK errors clear keys; mobile dialog fits and restores focus',async({page
   await page.getByLabel('Credentials',{exact:true}).selectOption('byok')
   const key='browser-test-secret'
   await page.getByLabel('API key',{exact:true}).fill(key)
+  await expect(page.getByLabel('Keep this key for new sessions in this browser')).not.toBeChecked()
+  await page.getByLabel('Keep this key for new sessions in this browser').check()
   await page.route('**/api/settings',async route=>{
     if(route.request().method()==='POST') {
       const body=route.request().postDataJSON()
       expect(body.api_key).toBe(key)
+      expect(body.retain_for_new_sessions).toBe(true)
       expect(body.provider).toBe('gemini')
       await route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({detail:'The provider rejected these credentials or model access.'})})
     } else await route.continue()

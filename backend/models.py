@@ -86,6 +86,7 @@ class ModelSettings(StrictModel):
     # Encrypted with the session; never included in controller/public views.
     api_key: str | None = Field(default=None, repr=False)
     validated_at: float | None = None
+    retain_for_new_sessions: bool = False
 
 
 class Session(StrictModel):

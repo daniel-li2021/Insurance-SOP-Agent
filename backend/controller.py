@@ -4,7 +4,7 @@ import re
 import uuid
 from datetime import datetime, timezone
 from .fixtures import Claim, Fixtures
-from .identity import merge_identity, supported, verify
+from .identity import DATE, extract_identity, merge_identity, normalize, supported, verify
 from .models import Interpretation, Message, Session, Summary, SummaryCase
 
 AUTH_SECONDS = 900
@@ -59,14 +59,14 @@ class Controller:
             s.event('CONSENT_EXPIRED', 'No email action was taken.', now)
 
     def redact(self, text: str, interpretation: Interpretation) -> str:
-        for c in interpretation.identity:
+        for c in interpretation.identity + extract_identity(text, Session()):
             if c.source:
                 text = re.sub(re.escape(c.source), f'[{c.field} provided]', text, flags=re.I)
         # Redaction does not depend solely on successful model extraction.
         # Never use fixture membership to decide what to redact: that is another lookup oracle.
         text = re.sub(r'(\b(?:my name is|full name(?: is|:)|name is)\s+)[^,;.!?\n]+', r'\1[name provided]', text, flags=re.I)
         text = re.sub(r'[\w.+-]+@[\w.-]+\.[a-zA-Z]{2,}', '[email provided]', text)
-        text = re.sub(r'\b\d{4}-\d{2}-\d{2}\b|\b\d{1,2}/\d{1,2}/\d{4}\b', '[date provided]', text)
+        text = re.sub(DATE, '[date provided]', text, flags=re.I)
         text = re.sub(r'\b(?:January|February|March|April|May|June|July|August|September|October|November|December) \d{1,2},? \d{4}\b', '[date provided]', text, flags=re.I)
         text = re.sub(r'(?<!\d)(?:\+?1[ -]?)?\(?\d{3}\)?[ .-]?\d{3}[ .-]?\d{4}(?!\d)', '[phone provided]', text)
         text = re.sub(r'\b\d{3}-\d{2}-\d{4}\b', '[SSN provided]', text)
@@ -76,6 +76,10 @@ class Controller:
 
     def answer(self, s: Session, text: str, i: Interpretation, now: float, message_id: str) -> Session:
         self.expire(s, now)
+        # Supplement all providers with literal spans; conflicting proposals still fail closed.
+        literal = extract_identity(text, s, i.correction)
+        proposed_fields = {c.field for c in i.identity}
+        i = i.model_copy(update={'identity': i.identity + [c for c in literal if c.field not in proposed_fields]})
         s.turns += 1
         # Pause before identity/claim/consent processing; acknowledgments cannot restart it.
         human_request = i.action == 'human' or self.wants_human(text)
@@ -91,6 +95,9 @@ class Controller:
                 s.human_offered = True
                 s.event('HUMAN_ASSISTANCE_REQUESTED', 'Chat paused. Demo cannot transfer or create a support request.', now)
                 return self.reply(s, '', 'I understand you’d like a human representative. This demo cannot make a real transfer or create a support request. Please contact your insurer’s official member support directly. Chat assistance is paused; you can return whenever you choose.', now)
+            if not human_request:
+                s.event('CHAT_PAUSED', 'Message not processed; explicit return required.', now)
+                return self.reply(s, '', 'Chat is paused. Select “Return to chatbot” to resume your saved conversation. No transfer or ticket has been created.', now)
             return s
         if (s.phase == 'POST_PROCESS' and s.summary and s.summary.status in ('offered','failed','timeout')
                 and text.strip().casefold() in ('yes','send','send it','skip')):
@@ -172,7 +179,7 @@ class Controller:
                 s.transition('VERIFY_ID', now)
                 s.human_offered = True
                 s.event('REPRESENTATIVE_BLOCKED', 'Relationship is not identity proof or authorization.', now)
-                return self.reply(s, prefix, 'I understand you’re helping someone else. Being a relative or knowing their details does not authorize access. I need verified representative identity and a policyholder authorization covering this claim. The supplied demo records do not provide those proofs. Please contact the insurer’s member support to establish authorization; no transfer has occurred.', now)
+                return self.reply(s, prefix, 'I understand you’re helping someone else. Being a relative or knowing their details does not authorize access. I need verified representative identity and a policyholder authorization covering this claim. The supplied demo records do not provide those proofs. Representative Mode remains active for this session, even if you later provide your own details. Please contact the insurer’s member support to establish authorization; no transfer has occurred. To act for yourself, choose “Start fresh self-service session.”', now)
         if i.intent == 'out_of_scope':
             s.scope_streak += 1
             s.event('OUT_OF_SCOPE', 'Request limited to insurance claim support.', now)
@@ -192,8 +199,10 @@ class Controller:
             if refusal:
                 prefix = '' if i.emotion == 'refusing' else prefix
                 msg = 'You don’t need to share SSN details. Full name + DOB (YYYY-MM-DD) + phone is accepted, or choose any three distinct approved fields including email. All three must match the same policyholder. You can use chat or the optional verification form.'
-            elif re.search(r'\b(?:dob|date of birth|born)\b.*\b\d{1,2}/\d{1,2}/\d{4}\b', text, re.I):
+            elif 'dob' in s.conflicts and any(c.field == 'dob' and normalize('dob', c.source) == 'invalid-date' for c in i.identity):
                 msg = 'Please enter your birth date as YYYY-MM-DD (for example, 1985-03-15) to avoid numeric-date ambiguity. Verification remains incomplete.'
+            elif s.conflicts:
+                msg = 'Some supplied details are ambiguous or contradictory. Please explicitly correct them in chat, or replace them using the optional form. Verification remains incomplete; individual matches stay private.'
             elif s.verification_prompted:
                 msg = 'Verification is still incomplete. You can provide or explicitly correct your chosen details in chat, or use the optional form. I cannot reveal which details match.'
             else:

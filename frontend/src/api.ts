@@ -3,6 +3,7 @@ export type Message = { id: string; role: 'user' | 'assistant'; text: string; pr
 export type SummaryCase = { case_id: string; case_type: string; status: string; denial_reason: string | null; payment: string; allowed_maximum: string; appeal_deadline: string | null; deadline_passed: boolean; next_steps: string; unresolved: string }
 export type Summary = { id: string; text: string; cases?: SummaryCase[]; recipient: string; expires_at: number; status: string; receipt: string | null }
 export type Session = {
+  model_connection: { ready: boolean; retain_for_new_sessions: boolean };
   version: number; phase: string; verified: boolean; csrf: string; model: string;
   verification: { count: number; required: number; fields: string[]; representative: boolean };
   intent: string; case_id: string | null; case_status: string | null; choices: { case_id: string; case_type: string; created_at: string; status: string }[];

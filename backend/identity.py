@@ -4,39 +4,107 @@ from .fixtures import Fixtures
 from .models import Candidate, Session
 
 
+MONTH = r'(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?|tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)'
+DATE = (rf'\b(?:\d{{4}}[-/.]\d{{1,2}}[-/.]\d{{1,2}}|\d{{1,2}}[-/.]\d{{1,2}}[-/.]\d{{4}}|'
+        rf'{MONTH}\.?\s+\d{{1,2}}(?:st|nd|rd|th)?(?:\s*,\s*|\s+)\d{{4}}|'
+        rf'\d{{1,2}}(?:st|nd|rd|th)?\s+{MONTH}\.?(?:\s*,\s*|\s+)\d{{4}})\b')
+PHONE = r'(?<![\d\w])(?:\+?\d{1,3}[ .-]?)?\(?\d{3}\)?[ .-]?\d{3}[ .-]?\d{4}(?![\d\w])'
+
+
 def normalize(field: str, value: str) -> str:
     value = value.strip()
     if field == 'dob':
-        for fmt in ('%Y-%m-%d', '%B %d, %Y', '%B %d %Y', '%b %d, %Y', '%b %d %Y'):
+        clean = re.sub(r'(?<=\d)(st|nd|rd|th)\b', '', value, flags=re.I)
+        clean = re.sub(r'(?<=[A-Za-z])\.', '', clean)
+        clean = re.sub(r'\s*,\s*', ' ', clean)
+        clean = ' '.join(clean.split())
+        numeric = re.fullmatch(r'(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})', clean)
+        if numeric:
+            month, day, year = map(int, numeric.groups())
+            # US dates with two plausible, different month/day orders need clarification.
+            if month != day and month <= 12 and day <= 12:
+                return 'invalid-date'
+            clean = f'{year:04}-{month:02}-{day:02}'
+        elif re.fullmatch(r'\d{4}[-/.]\d{1,2}[-/.]\d{1,2}', clean):
+            clean = re.sub(r'[/\.]', '-', clean)
+        for fmt in ('%Y-%m-%d', '%B %d %Y', '%b %d %Y', '%d %B %Y', '%d %b %Y'):
             try:
-                return datetime.strptime(value, fmt).date().isoformat()
+                return datetime.strptime(clean, fmt).date().isoformat()
             except ValueError:
                 pass
         return 'invalid-date'
     if field == 'phone':
+        if not re.fullmatch(r'\+?[\d ().-]+', value):
+            return 'invalid-phone'
         digits = re.sub(r'\D', '', value)
-        return '1' + digits if len(digits) == 10 else digits
+        if len(digits) == 10:
+            return '1' + digits
+        return digits if len(digits) == 11 and digits.startswith('1') else 'invalid-phone'
     if field == 'id_last4':
-        return re.sub(r'\s', '', value)
+        return value if re.fullmatch(r'\d{4}', value) else 'invalid-id'
+    if field == 'email':
+        return value.casefold()
     return ' '.join(value.casefold().split())
+
+
+def extract_identity(text: str, state: Session, correction: bool = False) -> list[Candidate]:
+    """Literal caller spans only; no fixture lookup, inference, or fuzzy matching."""
+    subject = 'policyholder' if state.representative else 'caller'
+    boundary = r"(?=\s*[,;.!?\n]|$|\s+(?i:and|policy|dob|phone|telephone|email|ssn|with|calling|my|born)\b)"
+    named = r"[^\W\d_][\w’'-]*(?:[ \t]+[^\W\d_][\w’'-]*){1,3}?"
+    introduced = r"[A-Z][\w’'-]*(?:[ \t]+[A-Z][\w’'-]*){1,3}?"
+    patterns = {
+        'email': r'[\w.+-]+@[\w.-]+\.[a-zA-Z]{2,}',
+        'phone': PHONE,
+        'policy_number': r'\bPOL-\d+\b',
+        'id_last4': r'(?:last\s*(?:four|4)(?:\s+digits)?|ssn|national[- ]?id)\s*(?:(?:is|are|:|ending(?:\s+in)?|ends in)\s*)?(\d{4})\b',
+        'name': rf"(?:(?i:my (?:full )?name is|(?:full )?name\s*(?:is|:))\s+({named})|\bI(?: am|[’']m)\s+({introduced})){boundary}",
+        'dob': DATE,
+    }
+    result = []
+    for field, pattern in patterns.items():
+        for match in re.finditer(pattern, text, 0 if field == 'name' else re.I):
+            if field == 'dob' and not (
+                re.search(r'\b(?:dob|date of birth|birth date|birthday|born)\s*(?:is|was|on|:|=)?\s*$', text[:match.start()], re.I)
+                or (not state.party_id and text.strip(' .') == match.group())
+                or (correction and 'dob' in state.identity and text[:match.start()].strip().casefold() in
+                    ('actually', 'correction', 'sorry', 'i meant') and not text[match.end():].strip(' .'))
+            ):
+                continue
+            value = next(g for g in match.groups() if g is not None) if field in ('name', 'id_last4') else match.group()
+            kind = 'unspecified'
+            if field == 'id_last4':
+                kind = 'national_id_last4' if 'national' in match.group().casefold() else 'ssn_last4' if 'ssn' in match.group().casefold() else 'unspecified'
+            result.append(Candidate(field=field, value=value, source=value, subject=subject, identifier_type=kind))
+    return result
 
 
 def supported(candidate: Candidate, text: str) -> bool:
     # Values must be supported by this turn, never by the model's knowledge of a person.
     return (candidate.source.casefold() in text.casefold() and
             normalize(candidate.field, candidate.value) == normalize(candidate.field, candidate.source) and
-            normalize(candidate.field, candidate.value) != 'invalid-date')
+            not normalize(candidate.field, candidate.value).startswith('invalid-'))
 
 
 def merge_identity(state: Session, candidates: list[Candidate], text: str, message_id: str, correction: bool):
+    # Multiple different values in one turn remain contradictory even on a correction turn.
+    by_field = {}
+    for c in candidates + extract_identity(text, state, correction):
+        if c.source.casefold() in text.casefold():
+            by_field.setdefault(c.field, set()).add(normalize(c.field, c.source))
+    blocked = {field for field, values in by_field.items()
+               if len(values) > 1 or any(v.startswith('invalid-') for v in values)}
+    for field in blocked:
+        if field not in state.conflicts:
+            state.conflicts.append(field)
     for c in candidates:
-        if not supported(c, text):
+        if c.field in blocked or not supported(c, text):
             continue
         if state.representative and c.subject == 'caller':
             continue
         old = state.identity.get(c.field)
         different = old and normalize(c.field, old.value) != normalize(c.field, c.value)
-        if different and not correction:
+        if (different or c.field in state.conflicts) and not correction:
             if c.field not in state.conflicts:
                 state.conflicts.append(c.field)
         else:

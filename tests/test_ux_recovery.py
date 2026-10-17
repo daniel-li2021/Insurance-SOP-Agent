@@ -94,16 +94,17 @@ def test_form_avoids_model_calls_and_requires_correct_identifier_type(tmp_path):
         fields[-1]['identifier_type'] = 'national_id_last4'
         assert form(c, fields).json()['verified']
         assert send(c, 'transfer me').json()['assistance_paused']
-        assert send(c, 'yes').json()['assistance_paused']
+        assert send(c, 'yes').status_code == 409
         assert not send(c, 'Return to chatbot').json()['assistance_paused']
 
 
 def test_human_recovery_after_identity_lockout_does_not_call_model(client):
     for _ in range(6): send(client, 'My name is Someone Else.')
     assert send(client, 'What is the payment?').status_code == 429
-    for text in ('transfer me', 'yes', 'okay transfer me'):
+    for text in ('transfer me', 'okay transfer me'):
         result = send(client, text)
         assert result.status_code == 200 and result.json()['assistance_paused']
+    assert send(client, 'yes').status_code == 409
     result = send(client, 'Return to chatbot').json()
     assert not result['assistance_paused'] and not result['verified']
     assert not any(e['code'] == 'CLAIMS_READ' for e in result['events'])
@@ -149,13 +150,13 @@ def test_live_extraction_contract_accepts_normalization_but_not_invented_values(
 
 
 def test_numeric_dob_clarification_and_refusal_recovery(client):
-    result = send(client, 'My name is Margaret Chen, DOB 03/15/1985.').json()
+    result = send(client, 'My name is Margaret Chen, DOB 03/04/1985.').json()
     assert not result['verified'] and 'YYYY-MM-DD' in result['messages'][-1]['text']
     result = send(client, 'I don’t want to share my SSN.').json()
     assert 'Full name + DOB' in result['messages'][-1]['text']
     assert 'SSN details' in result['messages'][-1]['text'] and not result['verified']
     result = send(client, 'Hello').json()
-    assert 'Verification is still incomplete' in result['messages'][-1]['text']
+    assert 'ambiguous or contradictory' in result['messages'][-1]['text']
     assert 'approved ID last four' not in result['messages'][-1]['text']
 
 

@@ -1,4 +1,43 @@
-# Verification and conversation recovery — October 17, 2026
+# Identity UX refinement — October 17, 2026
+
+## Investigation and root causes
+
+Baseline `2651d4b` on `main`, prompt `claimflow-extract-v3`, fixtures `328f5c17f69b`: fresh self-service HTTP sessions verified the exact Margaret Chen Name + DOB + Phone supplied in the request, in both structured and natural-language live messages. All three Live Interpreter candidates had literal supported sources and caller subjects. The form also verified the same fixture without a model call. Two baseline live calls used 2,516 tokens. The reported failure with those exact inputs could **not** be reproduced in a fresh session; there is no evidence to attribute it to backend fixture matching or to redaction.
+
+Confirmed related failures: `03/15/1985` and `March 15th, 1985` were omitted by the offline parser and rejected by DOB normalization. The optional form enforced ISO alone. This prevented common equivalent date formats from contributing a matching category. A prior representative interaction also deliberately kept the role sticky, so even fully matching policyholder details could not authorize that session. A new session clears that role; a page refresh resumes it. Individual matching fields remain undisclosed before authorization.
+
+## Current behavior
+
+- The shared deterministic extractor supplements categories omitted by an interpreter with literal caller spans. It never replaces a model-supplied category, guesses a value, or reads fixtures. Source support and normalized equality still govern every candidate. Scripted mode uses the same extractor. Safe model context now includes the representative-mode flag.
+- DOB accepts ISO/year-first separators, unambiguous US numeric dates, spelled-out full/abbreviated months, ordinal days and ordinary punctuation. `03/04/1985` needs clarification; invalid dates remain blocked. Phone accepts US formatting and optional `+1`, email trims surrounding whitespace and case-folds, and ID last four supports “SSN ending in 4472.” Names still use exact normalized strings or explicit fixture aliases, with no fuzzy matching.
+- Distinct contradictory values in a turn remain blocked even on a correction turn. Ambiguous/invalid supplied fields cannot be ignored to authorize using other fields. Explicit corrections or the form can resolve conflicts. Existing three-category, same-person, all-supplied-fields, ID-type, representative-grant and expiry controls remain enforced.
+- **Use synthetic verification details** is labeled Demo only and reads the existing P9 fixture through the existing synthetic starter endpoint. It fills Name + DOB + Phone, remains editable, and never submits or authorizes. The explicit action is now **Verify details**. Chat remains supported independently. Desktop fields align in three columns; mobile stacks them, with inherited theme fonts, spacing, borders and buttons.
+- Transcript placeholders are retained. The composer footer explains that `[name provided]` and similar labels mean values were hidden for privacy, not that extraction or verification failed. New formats are also redacted independently of the provider output.
+- A persistent Representative Mode panel explains the extra authorization requirement and opens the existing reset confirmation via **Start fresh self-service session**. Details cannot silently switch a representative into a self-service caller.
+- Chat, Inspector and Lab sources were **not removed** by the earlier simplification commit `8cc064b`: readable chat labels replaced raw strings, while internal references and audit events remained. The chat disclosure now explicitly says **Sources**. Inspector retains its evidence table and complete history; Evaluation Lab Decision Trace retains original references and timestamps. Pure empathy and unauthorized responses acquire no invented references.
+- While paused, the textarea and Send control are disabled, and the panel directs the caller to **Return to chatbot**. Direct API submissions of ordinary paused messages receive 409 before inference or state mutation. Repeated human requests retain the existing single escalation acknowledgment. Resume preserves conversation/verification subject to normal expiry; escalation remains simulated guidance without transfer, tickets or queues.
+
+## Model key flow and compatibility changes
+
+Users select a provider/model, enter a key in Model settings, and choose **Validate & apply**. The existing small paid validation call and conversation reset still apply. Production mode still requires BYOK for a live model; Offline Demo works without a key. Private local configured keys remain available only outside production.
+
+**Keep this key for new sessions in this browser** is optional and unchecked. The encrypted backend connection is copied into a new cookie-bound session only when selected; identity, representative state, transcript, claim context and consent are never copied. The old session row is deleted. No key enters localStorage/sessionStorage or public responses. The normal 24-hour inactivity/cookie limit applies, and another browser does not inherit the key. Uncheck and apply (with the normal key revalidation) to stop retaining it; applying Offline Demo also removes it.
+
+Previously, every reset discarded BYOK and silently returned to the backend default. Without opt-in, reset now deletes the key but preserves the BYOK provider/model selection so it can explicitly show **Missing key — no API call**. The backend rejects a subsequent model turn before creating an adapter or reserving model tokens. Users can enter a new key or select Offline Demo. Retained connections reuse their existing validation timestamp; reset itself makes no paid call. Form verification and explicit assistance controls do not require a model key.
+
+These behavior changes were communicated before edits. Existing rate limits, model-switch reset/confirmation, encrypted persistence, idempotency and CSRF checks are preserved.
+
+## Validation
+
+**229 pytest checks pass**, including all 23 existing scripted policy scenarios. Production TypeScript/Vite build passes. **21 distinct local Chromium journeys pass**, using the existing regression suite plus Sources/autofill/representative reset and missing-key notice coverage. A pause test helper was updated to expect a disabled composer; its corrected case and final form/settings controls were rechecked separately. Desktop (1440×1000) and mobile (390×844) form screenshots were visually inspected; generated images remain ignored under `data/`.
+
+The five-call final live HTTP acceptance passes structured input, natural US DOB/phone formatting, identity accumulated over two messages, and an ambiguous DOB withheld despite three other matching fields. It uses `gpt-6.1-sol`, prompt `claimflow-extract-v4`, fixtures `328f5c17f69b`, **6,321 tokens**, no retries and a 60,000-token reservation cap. Including the two baseline calls, this task made seven paid calls using **8,837 tokens**. See [sanitized evidence](evidence/identity-ux-live.json) and [opt-in runner](../scripts/evaluate_identity_ux.py). These are bounded synthetic observations, not general model/identity reliability.
+
+Key retention, removal, browser isolation, restart, expiry and absence of provider calls without a key are tested with mocked providers; no real customer key was submitted to settings in these tests. The missing-key browser notice uses a mocked session response; real persistence is exercised through backend HTTP tests. Native Chromium needed execution outside the filesystem sandbox. The existing Starlette/httpx warning remains. No public deployment, Docker rebuild, other-provider live acceptance, production identity proof, or real transfer/delivery was performed.
+
+---
+
+# Earlier verification and conversation recovery — October 17, 2026
 
 Implemented on the existing `main` baseline `8cc064b`. React/FastAPI, the four SOP phases, providers, identity thresholds, authorization, fixtures and simulated-email contract remain in place.
 

@@ -135,7 +135,10 @@ def create_app(directory: Path | None = None, interpreter=None, clock=time.time)
         return cookie, state, csrf
 
     def view(state, csrf):
-        return {**controller.view(state, clock()), 'csrf':csrf, 'model': (state.model_settings or settings.default).model}
+        selected = state.model_settings or settings.default
+        return {**controller.view(state, clock()), 'csrf':csrf, 'model': selected.model,
+                'model_connection': {'ready': selected.credential_source != 'byok' or bool(selected.api_key),
+                                     'retain_for_new_sessions': selected.retain_for_new_sessions}}
 
     async def interpret(selected, text, state):
         if model_slots.locked(): raise Limited('The language service is busy. Please retry in a moment.')
@@ -194,7 +197,8 @@ def create_app(directory: Path | None = None, interpreter=None, clock=time.time)
         p = controller.f.person('P9')
         opening = f'My name is {p.name}, policy {p.policy_number}. I’m calling about my denied healthcare claim from January. My DOB is {p.dob}, and my SSN last four is {p.id_last4}.'
         description = 'Start with Margaret’s synthetic details, then ask about documents, next steps, or the recorded payment amounts.'
-        return {'opening': opening, 'description': description, 'scenarios': [
+        return {'opening': opening, 'description': description,
+                'verification_details': {'name': p.name, 'dob': p.dob, 'phone': p.phone}, 'scenarios': [
             {'id': 'standard', 'name': 'Standard Claim', 'description': description, 'opening': opening},
             {'id': 'frustrated', 'name': 'Frustrated Caller', 'description': 'Try empathy and the privacy gate first. Then provide the synthetic identity details below to continue.',
              'opening': 'I already told you who I am. This is ridiculous. Just tell me why my healthcare claim from January was denied.'},
@@ -209,9 +213,22 @@ def create_app(directory: Path | None = None, interpreter=None, clock=time.time)
         except Limited as error:
             raise Limited(f'New session limit reached (12 per hour). Try again in {math.ceil(error.retry_after / 60)} minutes. Refreshing will not reset this limit. Your current session has been kept.', error.retry_after) from None
         old = request.cookies.get('claimflow_session')
+        fresh = Session(model=interpreter.name)
+        if old:
+            try:
+                previous, _ = store.load(old, clock())
+                selected = previous.model_settings
+                if selected and selected.credential_source == 'byok':
+                    retained = selected.model_copy(deep=True)
+                    if not retained.retain_for_new_sessions:
+                        retained.api_key = None
+                        retained.validated_at = None
+                    fresh.model_settings = retained
+                    fresh.model = retained.model
+            except KeyError:
+                pass
+        cookie, csrf, state = store.create(clock(), fresh)
         if old: store.remove(old)
-        cookie, csrf, state = store.create(clock())
-        state.model = interpreter.name
         # Welcome is returned by the product UI; stored turns are exclusively user interactions.
         response.set_cookie('claimflow_session', cookie, httponly=True, secure=production, samesite='strict', max_age=86400)
         return view(state, csrf)
@@ -241,6 +258,9 @@ def create_app(directory: Path | None = None, interpreter=None, clock=time.time)
             controller.expire(state, clock())
             if form and (state.phase != 'VERIFY_ID' or state.assistance_paused):
                 raise ValueError('The verification form is no longer active. Continue from the current conversation.')
+            if state.assistance_paused and not form and not controller.wants_human(text) and text.strip(' .!').casefold() not in (
+                    'return to chatbot', 'resume chat', 'continue with chatbot'):
+                raise ValueError('Chat is paused. Select Return to chatbot to resume your saved conversation. This message was not submitted.')
             pause_control = not form and (state.assistance_paused or controller.wants_human(text))
             if state.turns >= 40: raise Limited('This demo session has reached its turn limit. Start a new session.')
             if state.verification_attempts >= 6 and not state.party_id and not pause_control:

@@ -1,4 +1,10 @@
-# Current verification and recovery — October 17, 2026
+# Current identity UX acceptance — October 17, 2026
+
+**229 backend checks**, including the existing 23 policy scenarios, the production TypeScript/Vite build, and **21 distinct local Chromium journeys** pass. The form now offers explicit synthetic autofill and inline desktop fields, common identity formats normalize deterministically, representative state has a fresh-session control, Sources remain visible and auditable, and paused message submission is disabled/rejected. Optional encrypted BYOK retention preserves only model settings; no-retention reset shows **Missing key — no API call**.
+
+Fresh baseline structured/natural live inputs already verified the exact requested details; that particular failure was not reproduced. Confirmed format/state gaps and compatibility changes are detailed in [UX Recovery](UX_RECOVERY.md). Final live HTTP acceptance passed five bounded synthetic turns using 6,321 tokens; two baseline calls used 2,516 tokens (seven total calls, 8,837 tokens, no retries). [Sanitized live receipt](evidence/identity-ux-live.json). Other-provider acceptance, public hosting, Docker rebuild and real insurer operations remain unverified in this batch.
+
+# Earlier verification and recovery — October 17, 2026
 
 The focused batch passes **181 backend checks**, including the existing 23 scripted scenarios, the production frontend build and **19 local Chromium journeys**. Optional verification, conversational recovery, human-assistance pause and New Session investigation are documented in [UX Recovery](UX_RECOVERY.md). No paid live calls were made; the changed extraction prompt has mocked contract validation, not new live acceptance. The earlier runs below are retained as historical evidence.
 

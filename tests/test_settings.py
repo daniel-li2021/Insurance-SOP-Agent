@@ -48,8 +48,12 @@ def test_validated_change_revokes_authorization_consent_and_hides_key(client,tmp
     with TestClient(create_app(tmp_path,ScriptedInterpreter(),clock=lambda:NOW)) as resumed:
         resumed.cookies.update(client.cookies)
         assert resumed.get('/api/settings').json()['current']['credential_source']=='byok'
-    assert 'scripted'==client.post('/api/session').json()['model']
-    assert client.get('/api/settings').json()['current']['provider']=='scripted'
+    fresh = client.post('/api/session').json()
+    assert fresh['model_connection']['ready'] is False
+    client.headers['x-csrf-token'] = fresh['csrf']
+    assert client.get('/api/settings').json()['current']['provider']=='anthropic'
+    missing = send(client, 'hello')
+    assert missing.status_code == 409 and 'Missing key' in missing.text
 
 
 @pytest.mark.parametrize('patch,status',[
@@ -150,3 +154,60 @@ def test_private_mode_reuses_configured_keys_and_separates_defaults(monkeypatch)
     public = service.public(Session(model_settings=candidate))
     assert public['current']['model'] == 'claude-opus-5-5' and public['default']['model'] == 'scripted'
     assert public['current']['validated_at'] is None and 'private-local-config' not in str(public)
+
+
+@pytest.mark.parametrize('retain', [False, True])
+def test_key_retention_is_explicit_encrypted_and_does_not_retain_identity(client, tmp_path, retain, monkeypatch):
+    calls = []
+    class Probe:
+        name = 'claude-sonnet-5-5'
+        async def interpret(self, text, state):
+            calls.append(text)
+            return Interpretation(), {'tokens':20, 'latency_ms':1}
+    monkeypatch.setattr('backend.settings.make_interpreter', lambda *args: Probe())
+    result = change(client, retain_for_new_sessions=retain)
+    assert result.status_code == 200
+    # The form never calls a provider and establishes actual protected state to clear.
+    from tests.test_ux_recovery import form
+    assert form(client).json()['verified']
+    old_cookie = client.cookies['claimflow_session']
+    fresh = client.post('/api/session').json()
+    client.headers['x-csrf-token'] = fresh['csrf']
+    assert fresh['model_connection'] == {'ready':retain, 'retain_for_new_sessions':retain}
+    assert not fresh['verified'] and not fresh['messages'] and not fresh['events'] and not fresh['summary']
+    assert not fresh['verification']['representative']
+    state, _ = client.app.state.store.load(client.cookies['claimflow_session'], NOW)
+    assert state.model_settings.api_key == (SECRET if retain else None)
+    with pytest.raises(KeyError): client.app.state.store.load(old_cookie, NOW)
+    response = send(client, 'hello')
+    assert response.status_code == (200 if retain else 409)
+    assert len(calls) == (2 if retain else 1)
+    assert SECRET not in str(fresh) and SECRET not in client.get('/api/settings').text
+    assert SECRET.encode() not in (tmp_path/'sessions.sqlite3').read_bytes()
+    with client.app.state.store.db() as db:
+        assert SECRET.encode() not in db.execute('SELECT payload FROM sessions').fetchone()['payload']
+    # The retained encrypted selection survives an app restart with the same browser cookie.
+    with TestClient(create_app(tmp_path, ScriptedInterpreter(), clock=lambda:NOW)) as restarted:
+        restarted.cookies.update(client.cookies)
+        assert restarted.get('/api/session').json()['model_connection']['ready'] is retain
+        restarted.headers['x-csrf-token'] = fresh['csrf']
+        again = restarted.post('/api/session').json()
+        assert again['model_connection']['ready'] is retain
+
+
+def test_retained_key_is_not_shared_with_another_browser_or_expired_session(client, tmp_path):
+    assert change(client, retain_for_new_sessions=True).status_code == 200
+    with TestClient(create_app(tmp_path, ScriptedInterpreter(), clock=lambda:NOW)) as other:
+        assert other.post('/api/session').json()['model'] == 'scripted'
+        assert other.get('/api/settings').json()['current']['credential_source'] == 'demo'
+    with TestClient(create_app(tmp_path, ScriptedInterpreter(), clock=lambda:NOW+86401)) as expired:
+        expired.cookies.update(client.cookies)
+        assert expired.get('/api/session').status_code == 401
+        assert expired.post('/api/session').json()['model'] == 'scripted'
+
+
+def test_disabling_retention_drops_key_on_next_reset(client):
+    assert change(client, retain_for_new_sessions=True).status_code == 200
+    assert change(client, retain_for_new_sessions=False).status_code == 200
+    fresh = client.post('/api/session').json()
+    assert fresh['model_connection'] == {'ready':False, 'retain_for_new_sessions':False}
