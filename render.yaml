@@ -1,0 +1,26 @@
+# Preparation only. Creating/applying this Blueprint in Render starts deployment.
+services:
+  - type: web
+    name: claimflow-demo
+    runtime: docker
+    branch: main
+    region: oregon
+    plan: 0.5c-512mb
+    numInstances: 1
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    autoDeployTrigger: 'off'
+    healthCheckPath: /api/health
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: MODEL_MODE
+        value: scripted
+      - key: DATA_DIR
+        value: /app/data
+      - key: DAILY_TOKEN_LIMIT
+        value: '200000'
+    disk:
+      name: claimflow-sessions
+      mountPath: /app/data
+      sizeGB: 1

@@ -1,3 +1,7 @@
+# Render portfolio preparation — October 17, 2026
+
+**63 focused backend tests**, including all 23 shared policy scenarios, the production frontend/Docker builds, and **three Chromium journeys against the local production Docker image pass**. Production origin checks, Secure cookies, hidden schema/files, offline startup, disabled local keys and persisted session/token state are covered. The Blueprint passes Render's published JSON Schema. No paid model calls or Render deployments were made. Exact local image identity, scope and pending hosted checks are in [the deployment guide](DEPLOYMENT.md#preparation-validation).
+
 # Playground space and key-status follow-up — October 17, 2026
 
 The production frontend build and **five focused local Chromium journeys pass** after adding the visible missing-key status, reversible heading collapse, left workflow rail and shorter composer. Desktop/mobile screenshots were visually inspected. See [UX Recovery](UX_RECOVERY.md) for coverage and limits. The subsequent top-space adjustment also passed the build and three affected browser journeys; expanded panels now align directly below app navigation, with a full-height rail and Back control. Backend code is unchanged; prior backend evidence is reused, with no new paid model calls or Docker rebuild.

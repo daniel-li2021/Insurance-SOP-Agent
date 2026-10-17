@@ -2,6 +2,8 @@
 
 One FastAPI process serves a React/Vite build and same-origin JSON API. SQLite stores encrypted session state; no framework, vector store, queue, or external database is required. The six original fixtures remain unchanged.
 
+The [Render hosting profile](DEPLOYMENT.md) uses one Docker instance and a persistent disk. Production accepts exact HTTPS origins from `ALLOWED_ORIGINS`, or Render's trusted `RENDER_EXTERNAL_URL` when no explicit list is set; invalid or missing production origins prevent startup. API documentation and the OpenAPI schema are disabled publicly. Deployment remains a manual dashboard action.
+
 ```mermaid
 flowchart LR
     UI[Playground / Model settings] --> API[Same-origin FastAPI API]

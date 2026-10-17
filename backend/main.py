@@ -5,6 +5,7 @@ import asyncio
 from pathlib import Path
 from typing import Literal
 from uuid import UUID
+from urllib.parse import urlsplit
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.exceptions import RequestValidationError
@@ -64,11 +65,22 @@ def create_app(directory: Path | None = None, interpreter=None, clock=time.time)
             interpreter = LiveInterpreter(os.environ['OPENAI_API_KEY'], model)
         else:
             interpreter = ScriptedInterpreter()
-    origins = set(os.getenv('ALLOWED_ORIGINS', 'http://localhost:8000,http://127.0.0.1:8000,http://localhost:5173,http://127.0.0.1:5173').split(','))
-    if production and not os.getenv('ALLOWED_ORIGINS'): raise ValueError('Set explicit ALLOWED_ORIGINS in production')
+    origin_config = os.getenv('ALLOWED_ORIGINS') or (os.getenv('RENDER_EXTERNAL_URL', '') if production else
+        'http://localhost:8000,http://127.0.0.1:8000,http://localhost:5173,http://127.0.0.1:5173')
+    origins = {origin.strip().removesuffix('/') for origin in origin_config.split(',') if origin.strip()}
+    if production:
+        if not origins: raise ValueError('Set ALLOWED_ORIGINS or RENDER_EXTERNAL_URL in production')
+        for origin in origins:
+            parsed = urlsplit(origin)
+            if (parsed.scheme != 'https' or not parsed.hostname or parsed.username is not None or
+                    parsed.password is not None or parsed.path or parsed.query or parsed.fragment or
+                    '*' in origin or any(c.isspace() for c in origin)):
+                raise ValueError('Production origins must be exact HTTPS origins')
+            parsed.port  # Reject malformed port numbers before serving requests.
     store = Store(directory or Path(os.getenv('DATA_DIR', ROOT / 'data')), os.getenv('SESSION_ENCRYPTION_KEY'))
     controller = Controller(Fixtures())
-    app = FastAPI(title='ClaimFlow', docs_url=None if production else '/api/docs', redoc_url=None)
+    app = FastAPI(title='ClaimFlow', docs_url=None if production else '/api/docs', redoc_url=None,
+                  openapi_url=None if production else '/openapi.json')
     app.state.store, app.state.controller, app.state.interpreter = store, controller, interpreter
     model_slots = asyncio.Semaphore(2)
     settings = Settings(interpreter, allow_local=not production)
