@@ -133,3 +133,12 @@ h1,h2,h3,p { margin:0; }
 .summary-boundary { border-top:1px solid #ececec; padding-top:20px; margin-top:20px; color:#666; font-size:var(--text-body); }
 @media(max-width:580px) { .summary-header { padding:16px 14px 6px; }.summary-header h3 { font-size:16px; }.summary-content { padding:14px; font-size:15px; } }
 @media(prefers-reduced-motion:reduce) { .spin { animation:none; } }
+.decision-summary { list-style:none; padding:0; margin:16px 0; }
+.decision-summary li { display:flex; align-items:flex-start; gap:8px; font-size:var(--text-label); line-height:1.7; margin:10px 0; }
+.decision-summary svg { color:var(--accent); flex-shrink:0; margin-top:3px; }
+.inspector-evidence { font-size:var(--text-label); margin:18px 0; }
+.inspector-evidence summary,.full-trace>summary { padding:6px 0; }
+.inspector-evidence table { width:100%; border-collapse:collapse; table-layout:fixed; margin-top:10px; }
+.inspector-evidence th,.inspector-evidence td { padding:8px 5px; border-bottom:1px solid var(--line); text-align:left; vertical-align:top; overflow-wrap:anywhere; font-size:var(--text-meta); }
+.inspector-evidence th:first-child { width:38%; }
+.message-grounding p { margin-top:8px; }

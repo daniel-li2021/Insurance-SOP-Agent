@@ -1,5 +1,7 @@
 # Final validation — October 16, 2026
 
+> Historical acceptance before the October 17 refinement. See [post-UAT implementation and current validation](POST_UAT.md) for the changed conversation, settings and evidence UI.
+
 **Accepted for the documented synthetic portfolio demo.** The integrated `main` baseline was `52d9cfd` (V2 merged). Its tree matched the initial working branch; local `main` was fast-forwarded before changes. Baseline: 93 backend tests and 23 policy scenarios passed. Final: **96 backend tests, 23 policy scenarios, TypeScript/Vite build, and 11 Docker browser tests passed**. This is bounded developer acceptance, not a production or comprehensive accessibility certification.
 
 The canonical assignment is [`requirement.md`](../requirement.md), singular; no `requirements.md` exists. It was left unchanged. Machine-readable results and implementation hashes are in [final-validation.json](evidence/final-validation.json).

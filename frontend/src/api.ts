@@ -5,7 +5,7 @@ export type Summary = { id: string; text: string; cases?: SummaryCase[]; recipie
 export type Session = {
   version: number; phase: string; verified: boolean; csrf: string; model: string;
   verification: { count: number; required: number; fields: string[]; representative: boolean };
-  intent: string; case_id: string | null; choices: { case_id: string; case_type: string; created_at: string; status: string }[];
+  intent: string; case_id: string | null; case_status: string | null; choices: { case_id: string; case_type: string; created_at: string; status: string }[];
   emotion: string; human_offered: boolean; unresolved: string[]; messages: Message[]; events: Event[];
   summary: Summary | null; fixture_version: string; auth_expires_at: number | null; server_time: number;
 }

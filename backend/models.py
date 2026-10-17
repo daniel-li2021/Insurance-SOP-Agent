@@ -103,6 +103,7 @@ class Session(StrictModel):
     intent: str = 'none'
     hints: dict = Field(default_factory=dict)
     case_id: str | None = None
+    case_status: str | None = None
     choices: list[dict] = Field(default_factory=list)
     emotion: str = 'neutral'
     unresolved: list[str] = Field(default_factory=list)

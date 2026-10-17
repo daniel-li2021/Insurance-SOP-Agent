@@ -23,16 +23,31 @@ function Brand({ small = false }: { small?: boolean }) {
   return <span className={'brand ' + (small ? 'brand-small' : '')}><span className="brand-mark"><ShieldCheck size={small ? 16 : 22} strokeWidth={1.7} /></span>{!small && <span>Claim<span className="brand-light">Flow</span></span>}</span>
 }
 
+function evidenceLabel(reference: string) {
+  if (reference.startsWith('claims.json#')) return `Claim ${reference.split('#')[1]} record`
+  if (reference==='claims.json') return 'Authorized claim records'
+  if (reference.startsWith('claim_schema.json')) return 'Payment field definitions'
+  if (reference.startsWith('required_document_guideline.json')) {
+    const document = reference.split('/').at(-1)
+    if (document && !document.includes('#') && document!=='default') return title(document.replace(/^original /, '')) + ' guidance'
+    return reference.includes('followup') ? 'Claim follow-up guidance' : 'Document guidance'
+  }
+  return 'Provided guidance'
+}
+
 function Trace({ events, compact = false }: { events: Event[]; compact?: boolean }) {
   const visible = compact ? events.slice(-7).reverse() : events
   return <div className="trace-list">{visible.map(e => <details key={e.sequence} className="trace-entry">
     <summary><span className={'trace-dot ' + (e.code.includes('DENIED') || e.code.includes('BLOCKED') || e.code.includes('EXPIRED') ? 'attention' : '')} /><span>{title(e.code)}</span><ChevronDown size={13}/></summary>
-    <div className="trace-detail"><p>{e.detail}</p><span className="mono trace-meta">{e.phase} · #{String(e.sequence).padStart(2,'0')}</span>{e.references.length > 0 && <ul>{e.references.map(r => <li key={r} className="mono">{r}</li>)}</ul>}</div>
+    <div className="trace-detail"><p>{e.detail}</p><span className="mono trace-meta">{e.phase} · #{String(e.sequence).padStart(2,'0')} · <time dateTime={new Date(e.at*1000).toISOString()}>{new Date(e.at*1000).toLocaleString()}</time></span>{e.references.length > 0 && <ul>{e.references.map(r => <li key={r} className="mono">{r}</li>)}</ul>}</div>
   </details>)}</div>
 }
 
 function Inspector({ session }: { session: Session }) {
-  const latest = session.events.at(-1)
+  const evidence = session.messages.filter(m=>m.role==='assistant').at(-1)?.references || []
+  const labels: Record<string,string> = { CASE_RESOLVED:'Authorized claim selected', CLAIMS_READ:'Authorized claim accessed', GROUNDED_RESPONSE:'Response generated from claim records', SUMMARY_OFFERED:'Summary preview prepared', EMAIL_SIMULATED:'Email simulation recorded', EMAIL_SKIPPED:'Email simulation skipped', CONSENT_EXPIRED:'Summary consent expired', MODEL_CHANGED:'Model changed; verification reset' }
+  const latest = session.events.filter(e=>labels[e.code]).filter((e,n,events)=>!events.slice(n+1).some(next=>next.code===e.code)).slice(-4)
+
   return <div className="inspector-content">
     <div className="inspector-intro"><span className="eyebrow">WORKFLOW INSPECTOR</span><h2>Every decision, explained.</h2><p>The model interprets. The SOP controller decides.</p></div>
     <section className="inspector-section">
@@ -44,12 +59,15 @@ function Inspector({ session }: { session: Session }) {
     </section>
     <section className="inspector-section context-section">
       <div className="section-label"><ClipboardList size={16}/><h3>Conversation context</h3></div>
-      <dl><div><dt>Intent</dt><dd>{INTENTS[session.intent] || 'Claim assistance'}</dd></div><div><dt>Claim</dt><dd>{session.case_id ? <span className="mono">{session.case_id}</span> : <span className="context-lock"><LockKeyhole size={12}/>{session.verified ? 'Awaiting selection' : 'Locked until verified'}</span>}</dd></div><div><dt>Support</dt><dd>{session.human_offered ? 'Human assistance offered' : 'Guided assistance'}</dd></div></dl>
+      <dl><div><dt>Intent</dt><dd>{INTENTS[session.intent] || 'Claim assistance'}</dd></div><div><dt>Claim</dt><dd>{session.case_id ? <span><span className="mono">{session.case_id}</span>{session.case_status && <> · {title(session.case_status)}</>}</span> : <span className="context-lock"><LockKeyhole size={12}/>{session.verified ? 'Awaiting selection' : 'Locked until verified'}</span>}</dd></div><div><dt>Support</dt><dd>{session.human_offered ? 'Human review recommended' : 'Guided assistance'}</dd></div></dl>
       {session.unresolved.length > 0 && <p className="next-step"><span className="eyebrow">NEXT STEP</span>{session.unresolved[0]}</p>}
     </section>
     <section className="inspector-section decisions">
-      <div className="section-label"><Circle size={14}/><h3>Decision trail</h3><span className="muted mono">{session.events.length}</span></div>
-      {latest ? <><p className="micro muted">Policy events and evidence references. No private model reasoning.</p><Trace events={session.events} compact/>{session.events.length > 7 && <details className="full-trace"><summary>Earlier decisions ({session.events.length - 7})</summary><Trace events={session.events.slice(0,-7)}/></details>}</> : <div className="waiting-trace"><span className="trace-dot"/><p>Decisions will appear as the conversation progresses.</p></div>}
+      <div className="section-label"><Circle size={14}/><h3>Latest decisions</h3></div>
+      <ul className="decision-summary">{session.verified&&<li><Check size={14}/>Identity verified</li>}{evidence.some(r=>r.startsWith('required_document_guideline.json'))&&<li><Check size={14}/>Document guidance applied</li>}{latest.map(e=><li key={e.sequence}><Check size={14}/>{labels[e.code]}</li>)}</ul>
+      {!latest.length&&!session.verified&&<p className="micro muted">Decisions will appear as the conversation progresses.</p>}
+      {evidence.length>0&&<details className="inspector-evidence"><summary>Evidence used for this response · {evidence.length}</summary><p className="micro muted">Synthetic claim data and supplied guidance.</p><table><thead><tr><th>Source</th><th>Internal reference</th></tr></thead><tbody>{evidence.map(r=><tr key={r}><td>{evidenceLabel(r)}</td><td className="mono">{r}</td></tr>)}</tbody></table></details>}
+      <details className="full-trace"><summary>Full decision history ({session.events.length} events)</summary><p className="micro muted">Complete policy events, timestamps and original references. No private model reasoning.</p><Trace events={session.events}/></details>
     </section>
     <div className="inspector-foot"><LockKeyhole size={13}/><span>Credentials are hidden from the inspector.<br/>Fixture version <span className="mono">{session.fixture_version}</span></span></div>
   </div>
@@ -65,7 +83,7 @@ function pendingLabel(text: string) {
 }
 
 function lockedSession(s: Session): Session {
-  return { ...s, verified:false, phase:'VERIFY_ID', case_id:null, choices:[], summary:null, auth_expires_at:null,
+  return { ...s, verified:false, phase:'VERIFY_ID', case_id:null, case_status:null, choices:[], summary:null, auth_expires_at:null,
     verification:{ ...s.verification, count:0, fields:[] }, intent:'none', unresolved:['Complete identity verification'],
     messages:s.messages.filter(m=>!m.protected), events:s.events.filter(e=>!e.references.length) }
 }
@@ -179,7 +197,7 @@ export default function App() {
     setDemoOpen(true)
     if (!demo) try { setDemo(await api('/demo-starter')) } catch(e) { setDemoError((e as Error).message) }
   }
-  const summary = session?.summary
+  const summary = pending?.text ? null : session?.summary
   const activePhase = PHASES.indexOf(session?.phase || 'VERIFY_ID')
   const selectedDemo = demo?.scenarios.find(s => s.id === demoChoice)
 
@@ -199,7 +217,7 @@ export default function App() {
             {session?.messages.length===0&&<div className="starter-area"><div className="starter-label">EXPLORING THE DEMO?</div><button ref={demoButton} className="scenario-starter" onClick={showDemo}><span className="starter-icon"><ClipboardList size={18}/></span><span><strong>Try a guided scenario</strong><small>Standard claim, frustrated caller, or ambiguous claim</small></span><ArrowRight size={17}/></button><p className="micro muted"><Info size={12}/> Synthetic records only. Please don’t enter real personal information.</p></div>}
             <div className="assistant-message welcome"><Brand small/><div className="message-body"><span className="message-author">ClaimFlow</span><p>Hello, I’m here to help with your insurance claim.</p><p>We’ll first verify your identity, then look at your claim together and work through the next steps. You can ask questions along the way.</p><p className="muted">To begin, tell me what brings you here and share any three approved identity details: full name, date of birth, phone, email, or SSN / approved national-ID last four.</p></div></div>
 
-            {session?.messages.map(m => <div className={m.role==='user'?'user-message':'assistant-message'} key={m.id}>{m.role==='assistant'&&<Brand small/>}<div className="message-body"><span className="message-author">{m.role==='assistant'?'ClaimFlow':'You'}</span><div className="message-text">{m.text}</div>{m.references.length>0&&<details className="message-grounding"><summary><ShieldCheck size={12}/>Grounded in {m.references.length} {m.references.length===1?'source':'sources'}<ChevronDown size={12}/></summary><ul>{m.references.map(r=><li key={r} className="mono">{r}</li>)}</ul></details>}</div></div>)}
+            {session?.messages.map(m => <div className={m.role==='user'?'user-message':'assistant-message'} key={m.id}>{m.role==='assistant'&&<Brand small/>}<div className="message-body"><span className="message-author">{m.role==='assistant'?'ClaimFlow':'You'}</span><div className="message-text">{m.text}</div>{m.references.length>0&&<details className="message-grounding"><summary><ShieldCheck size={12}/>Based on claim data · {m.references.length} {m.references.length===1?'source':'sources'}<ChevronDown size={12}/></summary><p className="micro muted">Supporting evidence · synthetic records and supplied guidance</p><ul>{m.references.map(r=><li key={r}>{evidenceLabel(r)}</li>)}</ul></details>}</div></div>)}
             {pending?.text&&!session?.messages.some(m=>m.id===pending.body.request_id)&&<div className="user-message pending-message"><div className="message-body"><div className="message-text">{pendingLabel(pending.text)}</div><span className={'delivery-status '+(error?'status-bad':'')} role="status">{error?<CircleAlert size={14}/>:<Clock3 size={14}/>} {error?'Not sent · Retry below':'Sending…'}</span></div></div>}
             {session?.choices.length ? <div className="case-choices">{session.choices.map(c=><Button variant="outline" size="sm" key={c.case_id} disabled={busy} onClick={()=>void execute({path:'/turn',body:{text:`Please discuss ${c.case_id}. I want its status.`,version:session.version,request_id:crypto.randomUUID()},text:`Please discuss ${c.case_id}. I want its status.`})}><span className="mono">{c.case_id}</span> · {c.created_at.slice(0,4)}<ArrowRight size={13}/></Button>)}</div>:null}
             {summary&&<div className="summary-preview"><div className="summary-header"><Mail size={17}/><h3>Claim discussion summary</h3><span>Simulation</span></div><div className="summary-content">{summary.cases?.length ? <>{summary.cases.map(c=><section className="summary-case" key={c.case_id} aria-label={'Summary for '+c.case_id}><div className="summary-claim"><span className="summary-label">Claim</span><h4>{c.case_id} · {c.case_type}</h4><p className="summary-status">{c.status==='Denied'?<CircleAlert size={17} className="status-bad"/>:<CheckCircle2 size={17}/>} {c.status}</p></div><dl>{c.denial_reason&&<div><dt>Reason for denial</dt><dd>{c.denial_reason}</dd></div>}<div><dt>Payment</dt><dd className="summary-payment">{c.payment}</dd><dd className="summary-note">Recorded finalized insurer payment. Allowed maximum: {c.allowed_maximum}, not a promised payout.</dd></div>{c.appeal_deadline&&<div><dt>Appeal deadline</dt><dd className={c.deadline_passed?'deadline-passed':''}>{c.appeal_deadline}{c.deadline_passed?' — Passed':''}</dd></div>}<div><dt>Next steps</dt><dd>{c.next_steps}</dd></div></dl><details className="summary-unresolved"><summary>Still unresolved</summary><p>{c.unresolved}</p></details></section>)}<p className="summary-boundary">This is a synthetic summary. No appeal, payment, document submission, or email delivery has occurred.</p></> : summary.text}</div><div className="summary-recipient"><span>To your on-file email</span><strong>{summary.recipient}</strong></div>
@@ -211,7 +229,7 @@ export default function App() {
           <div className="composer-area">
             {error&&<div className="error-banner" role="alert"><Info size={15}/><span>{error}</span>{pending?<Button variant="ghost" size="sm" disabled={busy} onClick={()=>void execute(pending)}>Retry</Button>:<Button variant="ghost" size="sm" disabled={busy} onClick={()=>void refresh().then(()=>setError('')).catch(()=>reset())}>Recover</Button>}<button aria-label="Dismiss error" onClick={()=>{setError('');setPending(null)}}><X size={15}/></button></div>}
             {session?.verified&&session.case_id&&session.phase!=='POST_PROCESS'&&<div className="wrap-up"><span>Have what you need?</span><button disabled={busy} onClick={()=>action('preview')}>Review summary <ArrowRight size={13}/></button></div>}
-            <form className="composer" onSubmit={e=>{e.preventDefault();send()}}><label className="sr-only" htmlFor="message">Message ClaimFlow</label><textarea id="message" ref={inputRef} value={text} maxLength={4000} rows={2} disabled={!session||busy} placeholder={session?.messages.length?'Ask a follow-up question…':'Tell me about your claim…'} onChange={e=>{setText(e.target.value);if(pending){setPending(null);setError('')}}} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.nativeEvent.isComposing){e.preventDefault();send()}}}/><Button type="submit" size="icon" disabled={!session||busy||!!pending||!text.trim()} aria-label="Send message">{busy?<Loader2 size={17} className="spin"/>:<ArrowUp size={19}/>}</Button></form>
+            <form className="composer" onSubmit={e=>{e.preventDefault();send()}}><label className="sr-only" htmlFor="message">Message ClaimFlow</label><textarea id="message" ref={inputRef} value={text} maxLength={4000} rows={2} disabled={!session||busy} placeholder={session?.messages.length?'Ask a follow-up question…':'Tell me about your claim…'} onChange={e=>{setText(e.target.value);if(pending){setPending(null);setError('')}}} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.nativeEvent.isComposing){e.preventDefault();send()}}}/><Button type="submit" size="icon" disabled={!session||busy||!!pending||!text.trim()} aria-label="Send message"><ArrowUp size={19}/></Button></form>
             <div className="composer-footer"><span><LockKeyhole size={11}/>Identity details are redacted in saved conversation views.</span><span>Enter to send · Shift + Enter for a new line</span></div>
           </div>
         </section>

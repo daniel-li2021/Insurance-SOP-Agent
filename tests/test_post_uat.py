@@ -53,12 +53,14 @@ def test_structured_summary_is_per_claim_and_preview_does_not_send():
     s = verified(c)
     c.preview(s, c.f.claim(s, s.case_id, NOW), '', NOW)
     old = s.summary.id
+    assert any('document_alternative_guidance' in ref for ref in s.messages[-1].references)
     assert not any(e.code == 'EMAIL_SIMULATED' for e in s.events)
     turn(c, s, 'Please discuss CL-2011. What is the payment?')
     assert s.summary is None
     c.preview(s, c.f.claim(s, s.case_id, NOW), '', NOW)
     assert s.summary.id != old and s.summary.status == 'offered'
     denied, closed = s.summary.cases
+    assert denied.denial_reason == 'Missing pathology report and treating provider office note.'
     assert denied.case_id == 'CL-2048' and denied.payment == '$0.00' and denied.deadline_passed
     assert closed.case_id == 'CL-2011' and closed.payment == '$780.00' and closed.denial_reason is None
     assert closed.appeal_deadline is None and not any(e.code == 'EMAIL_SIMULATED' for e in s.events)

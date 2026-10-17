@@ -208,6 +208,7 @@ class Controller:
             s.case_id = None
             s.transition('RESOLVE_INTENT', now)
             return self.reply(s, prefix, 'This claim is unavailable in your authorized records. Please check the reference or ask member support.', now)
+        s.case_status = claim.status
         if i.action == 'wrap_up':
             return self.preview(s, claim, prefix, now)
         if text.strip().casefold() in ('yes', 'send', 'send it', 'skip'):
@@ -242,14 +243,14 @@ class Controller:
             parts.append(f'{c.case_id} · {c.case_type.capitalize()} claim\nRecorded status: {c.status}.')
         if c.denial_reason and (detailed or any(t in topics for t in ('status', 'denial'))):
             parts.append(f'Your claim {c.case_id} was denied because {c.denial_reason}.')
-        if 'payment' in topics:
+        if 'payment' in topics or detailed:
             parts.append(f'The recorded finalized insurer payment for {c.case_id} is ${c.net_pay:,.2f}.\n\nThe allowed maximum is ${c.allowed_max_amount:,.2f}, not a promised payout. The claim is currently recorded as {c.status}.')
             if detailed:
                 parts.append(f'Expected reimbursement: ${c.expected_reimbursement_amount:,.2f}. Fee-schedule amount (net fee): ${c.net_fee:,.2f}. The fee-schedule amount does not establish what you owe. I have made no payment decision.')
             refs.append('claim_schema.json#field_descriptions')
         if c.documents_needed and ('documents' in topics or detailed) and not documents:
             parts.append('Requested documents: ' + needs + '.')
-        if c.documents_needed and any(t in topics for t in ('documents', 'alternatives', 'format')):
+        if c.documents_needed and (detailed or any(t in topics for t in ('documents', 'alternatives', 'format'))):
             # Model-proposed names can only narrow the authorized record's requirements.
             focused = [d for d in c.documents_needed if any(d.casefold() in name.casefold() for name in documents or [])]
             for doc in focused or c.documents_needed:
@@ -294,7 +295,7 @@ class Controller:
             claim = self.f.claim(s, case_id, now)
             if claim:
                 expired = bool(claim.appeal_deadline and claim.appeal_deadline < datetime.fromtimestamp(now, timezone.utc).date())
-                reason = ('Missing ' + ' and '.join(DOCUMENT_KEYS.get(d, d) for d in claim.documents_needed) + '.') if claim.denial_reason and claim.documents_needed else claim.denial_reason
+                reason = ('Missing ' + ' and '.join('treating provider office note' if d == 'office note' else d for d in claim.documents_needed) + '.') if claim.denial_reason and claim.documents_needed else claim.denial_reason
                 next_steps = ('Ask the provider about replacement documents. Contact a human claims representative to confirm whether further review is possible.' if claim.documents_needed else 'Contact member support if you have questions about this recorded outcome.')
                 cases.append(SummaryCase(case_id=claim.case_id, case_type=claim.case_type.capitalize(),
                     status=claim.status.capitalize(), denial_reason=reason,
@@ -303,6 +304,8 @@ class Controller:
                     deadline_passed=expired, next_steps=next_steps,
                     unresolved=('Document receipt has not been confirmed. ' if claim.documents_needed else '') + 'No appeal or transfer has been initiated.'))
                 refs.append(f'claims.json#{claim.case_id}')
+                if claim.documents_needed:
+                    refs.extend(f'required_document_guideline.json#document_alternative_guidance/{DOCUMENT_KEYS.get(d, d) if DOCUMENT_KEYS.get(d, d) in self.f.guidance["document_alternative_guidance"] else "default"}' for d in claim.documents_needed)
         sections = []
         for item in cases:
             fields = [f'{item.case_id} · {item.case_type}', f'Status: {item.status}']
@@ -316,6 +319,7 @@ class Controller:
         name, domain = person.email.split('@')
         masked = name[0] + '•••@' + domain
         s.summary = Summary(id=str(uuid.uuid4()), text=body, cases=cases, recipient=masked, expires_at=now + CONSENT_SECONDS)
+        refs = list(dict.fromkeys(refs))
         s.event('SUMMARY_OFFERED', 'Preview ready; explicit Send or Skip required. Consent expires in 10 minutes.', now, refs)
         return self.reply(s, prefix, 'Your summary is ready below. Review it, then choose Send simulated email or Skip. Nothing is sent automatically.', now, refs)
 
@@ -351,6 +355,7 @@ class Controller:
                 'verification': {'count': 3 if authorized else 0, 'required': 3,
                                  'fields': s.matched if authorized else [], 'representative': s.representative},
                 'intent': s.intent, 'case_id': s.case_id if authorized else None,
+                'case_status': s.case_status if authorized and s.case_id else None,
                 'choices': s.choices if authorized else [], 'emotion': s.emotion,
                 'human_offered': s.human_offered, 'unresolved': s.unresolved,
                 'messages': [m.model_dump() for m in s.messages if authorized or not m.protected],
