@@ -1,3 +1,9 @@
+# Final small polish — October 17, 2026
+
+**114 focused backend checks**, including the existing 23 policy scenarios, **four local Chromium journeys**, and the production TypeScript/Vite build pass. Three pre-edit live turns did not reproduce the exact reported payment failure; a valid missing-topic interpretation reproduced it deterministically. Five final live turns passed payment/DOB recovery and document-exhaustion acceptance, using the existing local `.env`. All eight live calls used **10,117 tokens**, with no retries. See the [scope, investigation, screenshots and limits](SMALL_POLISH.md) and [sanitized receipt](evidence/small-polish-live.json).
+
+The sections below retain earlier verification as historical evidence.
+
 # Current identity UX acceptance — October 17, 2026
 
 **229 backend checks**, including the existing 23 policy scenarios, the production TypeScript/Vite build, and **21 distinct local Chromium journeys** pass. The form now offers explicit synthetic autofill and inline desktop fields, common identity formats normalize deterministically, representative state has a fresh-session control, Sources remain visible and auditable, and paused message submission is disabled/rejected. Optional encrypted BYOK retention preserves only model settings; no-retention reset shows **Missing key — no API call**.

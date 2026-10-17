@@ -133,5 +133,5 @@ class ScriptedInterpreter:
         if re.search(r'confus|don.t understand', s): out.emotion = 'confused'
         if re.search(r'refuse|won.t (give|provide)|not sharing', s): out.emotion = 'refusing'
         out.new_case = bool(re.search(r'another claim|different claim|other claim', s))
-        out.alternatives_exhausted = bool(re.search(r'no (copies|alternatives)|exhausted|provider.*cannot|clinic.*cannot', s))
+        out.alternatives_exhausted = bool(re.search(r'no (copies|alternatives)|exhausted|(?:provider|clinic|hospital|doctor).*(?:cannot|can.t|unable)', s))
         return out, {'tokens': 0, 'latency_ms': 0}

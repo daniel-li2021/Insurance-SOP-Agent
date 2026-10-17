@@ -150,8 +150,10 @@ class Controller:
             s.pending_documents = []
             s.context_notes = []
             if s.party_id: s.transition('RESOLVE_INTENT', now)
-        if s.phase in ('VERIFY_ID', 'RESOLVE_INTENT') and i.topics:
-            s.pending_topics = list(dict.fromkeys(s.pending_topics + i.topics))
+        # A payment intent is itself a question, even if the model omits topics.
+        requested_topics = i.topics or (['payment'] if i.intent == 'payment_question' else [])
+        if s.phase in ('VERIFY_ID', 'RESOLVE_INTENT') and requested_topics:
+            s.pending_topics = list(dict.fromkeys(s.pending_topics + requested_topics))
             s.pending_documents = list(dict.fromkeys(s.pending_documents + i.documents))
         if i.emotion != 'neutral' or i.alternatives_exhausted or i.topics:
             s.context_notes.append({'message_id':message_id, 'emotion':i.emotion,
@@ -253,7 +255,7 @@ class Controller:
             return self.preview(s, claim, prefix, now)
         if text.strip().casefold() in ('yes', 'send', 'send it', 'skip'):
             return self.reply(s, prefix, 'To wrap up, choose “Review summary.” You can then explicitly choose Send simulated email or Skip. A chat message alone does not authorize sending.', now)
-        topics = list(dict.fromkeys(i.topics + s.pending_topics)) or ['status']
+        topics = list(dict.fromkeys(requested_topics + s.pending_topics)) or ['status']
         exhausted = i.alternatives_exhausted
         body, refs = self.explain(claim, topics, now, exhausted,
                                   documents=i.documents or s.pending_documents,
@@ -290,14 +292,18 @@ class Controller:
             refs.append('claim_schema.json#field_descriptions')
         if c.documents_needed and ('documents' in topics or detailed) and not documents:
             parts.append('Requested documents: ' + needs + '.')
-        if c.documents_needed and (detailed or any(t in topics for t in ('documents', 'alternatives', 'format'))):
+        if c.documents_needed and not exhausted and (detailed or any(t in topics for t in ('documents', 'alternatives', 'format'))):
             # Model-proposed names can only narrow the authorized record's requirements.
             focused = [d for d in c.documents_needed if any(d.casefold() in name.casefold() for name in documents or [])]
             for doc in focused or c.documents_needed:
                 key = DOCUMENT_KEYS.get(doc, doc)
                 group = 'document_alternative_guidance' if 'alternatives' in topics else 'document_guidance'
                 entry = g[group].get(key, g.get('document_alternative_guidance', {}).get('default') if group == 'document_alternative_guidance' else g['default_guidance'])
-                parts.append(f'{doc.capitalize()}: {entry["en"]}')
+                guidance = entry['en']
+                # The fixture's final conditional referral is covered once below, when exhausted.
+                if group == 'document_alternative_guidance' and 'human' in guidance:
+                    guidance = guidance.rsplit(' If ', 1)[0]
+                parts.append(f'{doc.capitalize()}: {guidance}')
                 refs.append(f'required_document_guideline.json#{group}/{key if key in g[group] else "default"}')
             if 'alternatives' in topics:
                 parts.append('These are options for review, not confirmation that a substitute will be accepted or the denial reversed.')
@@ -319,11 +325,12 @@ class Controller:
         if c.appeal_deadline and (detailed or 'appeal' in topics or 'timing' in topics or (first and any(t in topics for t in ('status', 'denial', 'documents', 'alternatives')))):
             formatted = c.appeal_deadline.strftime('%B %d, %Y').replace(' 0', ' ')
             if expired:
-                parts.append(f'The recorded appeal deadline was {formatted}, and it has passed. I can’t confirm whether a late appeal or reopening is available. Contact a human claims representative to review any remaining options. No appeal or transfer has been initiated.')
+                referral = '' if exhausted else ' Contact a human claims representative to review any remaining options. No appeal or transfer has been initiated.'
+                parts.append(f'The recorded appeal deadline was {formatted}, and it has passed. I can’t confirm whether a late appeal or reopening is available.' + referral)
             else:
                 parts.append(f'The recorded appeal deadline is {formatted}. Member support can confirm applicable submission requirements; I cannot extend this date.')
         if exhausted:
-            parts.append(g['claim_followup_settings']['human_review_after_document_alternatives_exhausted']['en'] + ' This demo cannot transfer you.')
+            parts.append('Since those document options are unavailable, please contact a human claims representative to review manual options. This is not confirmation that a substitute will be accepted, the denial reversed, or an appeal reopened. No appeal or transfer has been initiated; this demo cannot transfer you.')
             refs.append('required_document_guideline.json#claim_followup_settings/human_review_after_document_alternatives_exhausted')
         if not parts: parts.append(f'The recorded status of {c.case_id} is {c.status}. What would you like to know?')
         return '\n\n'.join(parts), list(dict.fromkeys(refs))
@@ -342,7 +349,7 @@ class Controller:
                     payment=f'${claim.net_pay:,.2f}', allowed_maximum=f'${claim.allowed_max_amount:,.2f}',
                     appeal_deadline=claim.appeal_deadline.strftime('%B %d, %Y').replace(' 0', ' ') if claim.appeal_deadline else None,
                     deadline_passed=expired, next_steps=next_steps,
-                    unresolved=('Document receipt has not been confirmed. ' if claim.documents_needed else '') + 'No appeal or transfer has been initiated.'))
+                    unresolved='Document receipt has not been confirmed.' if claim.documents_needed and 'receipt' in s.discussed_by_case.get(case_id, []) else ''))
                 refs.append(f'claims.json#{claim.case_id}')
                 if claim.documents_needed:
                     refs.extend(f'required_document_guideline.json#document_alternative_guidance/{DOCUMENT_KEYS.get(d, d) if DOCUMENT_KEYS.get(d, d) in self.f.guidance["document_alternative_guidance"] else "default"}' for d in claim.documents_needed)
@@ -352,7 +359,9 @@ class Controller:
             if item.denial_reason: fields.append('Reason for denial: ' + item.denial_reason)
             fields.append(f'Payment: {item.payment} (recorded finalized insurer payment). Allowed maximum: {item.allowed_maximum}, not a promised payout.')
             if item.appeal_deadline: fields.append(f'Appeal deadline: {item.appeal_deadline}' + (' — Passed' if item.deadline_passed else ''))
-            fields.extend(['Next steps: ' + item.next_steps, 'Still unresolved: ' + item.unresolved])
+            fields.append('Next steps: ' + item.next_steps)
+            if item.unresolved:
+                fields.append('Still unresolved: ' + item.unresolved)
             sections.append('\n\n'.join(fields))
         body = '\n\n——\n\n'.join(sections) + '\n\nThis is a synthetic summary. No appeal, payment, document submission, or email delivery has occurred.'
         person = self.f.person(s.party_id)

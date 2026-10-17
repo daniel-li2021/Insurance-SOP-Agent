@@ -62,6 +62,18 @@ def test_form_mixed_identity_generic_failure_then_explicit_correction(client):
     assert form(client, fields).json()['verified']
 
 
+def test_form_dob_correction_answers_original_pending_payment(client):
+    assert not send(client, 'What is the payment for CL-2048?').json()['verified']
+    fields = [{'field': 'name', 'value': 'Margaret Chen'}, {'field': 'dob', 'value': '1985-03-16'},
+              {'field': 'phone', 'value': Fixtures().person('P9').phone}]
+    wrong = form(client, fields).json()
+    assert not wrong['verified'] and not any(e['code'] == 'CLAIMS_READ' for e in wrong['events'])
+    fields[1]['value'] = '1985-03-15'
+    result = form(client, fields).json()
+    assert result['verified'] and result['case_id'] == 'CL-2048'
+    assert 'finalized insurer payment for CL-2048 is $0.00' in result['messages'][-1]['text']
+
+
 def test_form_preserves_representative_authorization_and_limits(client):
     send(client, 'I am calling on behalf of my mother.')
     result = form(client).json()
