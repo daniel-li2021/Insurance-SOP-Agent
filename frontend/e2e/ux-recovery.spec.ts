@@ -34,6 +34,8 @@ test('optional form: editable visible details, private mismatch, correction, ear
   await expect(page.locator('.verification-form')).toBeVisible()
   await message(page, 'Actually my phone is +16505212836.')
   await expect(page.getByRole('button', { name: 'Review summary', exact: true })).toBeVisible()
+  expect((await page.locator('.user-message').allTextContents()).join(' ')).toContain('1985-03-15')
+  await page.getByRole('button', { name: 'Hide submitted details', exact: true }).click()
   expect((await page.locator('.user-message').allTextContents()).join(' ')).not.toContain('1985-03-15')
 })
 
@@ -90,7 +92,7 @@ test('same session changed in another tab requires one explicit safe retry', asy
   await page.getByRole('button', { name: 'Retry', exact: true }).click()
   await expect(page.getByRole('alert')).toHaveCount(0)
   await expect(page.locator('.user-message')).toHaveCount(2)
-  expect((await page.locator('.user-message').allTextContents()).join(' ')).not.toContain('Margaret Chen')
+  await expect(page.locator('.user-message').last()).toContainText('My name is Margaret Chen.')
 })
 
 test('rate-limited reset preserves conversation and Recover does not create another session', async ({ page }) => {

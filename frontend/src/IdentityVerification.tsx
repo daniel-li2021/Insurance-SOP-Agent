@@ -13,7 +13,7 @@ type Field = keyof typeof FIELDS
 export type VerificationValue = { field: Field; value: string; identifier_type?: string }
 
 export function IdentityVerification({ disabled, onSubmit }: {
-  disabled: boolean; onSubmit: (fields: VerificationValue[]) => Promise<boolean>
+  disabled: boolean; onSubmit: (fields: VerificationValue[], displayText: string) => Promise<boolean>
 }) {
   const [fields, setFields] = useState<Field[]>(['name', 'dob', 'phone'])
   const [values, setValues] = useState(['', '', ''])
@@ -36,7 +36,8 @@ export function IdentityVerification({ disabled, onSubmit }: {
     {demoError && <p role="alert">{demoError}</p>}
     <form autoComplete="off" onSubmit={async event => {
       event.preventDefault()
-      if (await onSubmit(fields.map((field, n) => ({ field, value: values[n].trim(), ...(field === 'id_last4' ? { identifier_type: idType } : {}) })))) {
+      const submitted = fields.map((field, n) => ({ field, value: values[n].trim(), ...(field === 'id_last4' ? { identifier_type: idType } : {}) }))
+      if (await onSubmit(submitted, submitted.map(({field,value}) => `${FIELDS[field][0]}: ${value}`).join('\n'))) {
         setValues(['', '', ''])
         if (panel.current) panel.current.open = false
       }

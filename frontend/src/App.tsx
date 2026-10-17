@@ -74,8 +74,13 @@ function Inspector({ session }: { session: Session }) {
   </div>
 }
 
-type Pending = { path: string; body: Record<string,unknown>; text?: string }
+type Pending = { path: string; body: Record<string,unknown>; text?: string; displayText?: string }
 type DemoScenario = { id: string; name: string; opening: string; description: string }
+
+function transcriptScope(session: Session) {
+  const reset = session.events.filter(e => ['AUTH_EXPIRED', 'IDENTITY_RECHECK', 'REPRESENTATIVE_BLOCKED', 'MODEL_CHANGED'].includes(e.code)).at(-1)?.sequence
+  return JSON.stringify([session.csrf, session.model, reset])
+}
 
 function pendingLabel(text: string) {
   // Only fixed, non-identity questions are safe before server-side redaction.
@@ -97,6 +102,8 @@ export default function App() {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [pending, setPending] = useState<Pending | null>(null)
+  // Page memory only; never merge originals into the server session or Inspector.
+  const [submitted, setSubmitted] = useState<{ scope: string; messages: Record<string,string> } | null>(null)
   const [inspector, setInspector] = useState(true)
   const [mobileInspector, setMobileInspector] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -118,6 +125,12 @@ export default function App() {
   const resetButton = useRef<HTMLButtonElement>(null)
   const demoButton = useRef<HTMLButtonElement>(null)
   const demoInserted = useRef(false)
+  const scope = session ? transcriptScope(session) : ''
+  const submittedMessages = submitted?.scope === scope ? submitted.messages : {}
+
+  useEffect(() => {
+    setSubmitted(current => current?.scope === scope ? current : null)
+  }, [scope])
 
   useEffect(() => {
     let active = true
@@ -141,6 +154,7 @@ export default function App() {
       setRemaining(Math.max(0, Math.ceil((session.summary?.expires_at || 0)-now)))
       if (session.auth_expires_at && now >= session.auth_expires_at) {
         // Hide protected content at the deadline even when the server cannot be reached.
+        setSubmitted(null)
         setSession(current => current === session ? lockedSession(current) : current)
         void refresh().catch(() => {})
       } else if (session.summary && ['offered','failed','timeout'].includes(session.summary.status) && now >= session.summary.expires_at && expiredSummary.current !== session.summary.id) {
@@ -168,6 +182,12 @@ export default function App() {
     if (operation.text) setText('')
     try {
       const next = await api<Session>(operation.path, operation.body, session.csrf)
+      const original = operation.text ?? operation.displayText
+      const id = operation.body.request_id
+      if (transcriptScope(next) !== scope) setSubmitted(null)
+      else if (original && typeof id === 'string' && next.messages.some(m => m.role === 'user' && m.id === id)) {
+        setSubmitted(current => ({ scope, messages: { ...(current?.scope === scope ? current.messages : {}), [id]: original } }))
+      }
       setSession(next); setPending(null)
       if (operation.text) setText('')
       inputRef.current?.focus()
@@ -176,9 +196,11 @@ export default function App() {
       if (operation.text) setText(operation.text)
       setError(e instanceof Error ? e.message : 'Something went wrong. Please retry.')
       if (e instanceof ApiError && e.status === 401) {
+        setSubmitted(null)
         setSession(current => current && lockedSession(current)); setPending(null)
       }
       if (e instanceof ApiError && [403, 409].includes(e.status)) {
+        setSubmitted(null)
         setSession(current => current && lockedSession(current))
         try {
           const latest = await refresh()
@@ -209,6 +231,7 @@ export default function App() {
     if (sendingRef.current) return
     sendingRef.current = true
     ++sessionEpoch.current
+    setSubmitted(null)
     setBusy(true); setError('')
     try { setSession(await api<Session>('/session',{})); setText(''); setPending(null); setNearBottom(true); setResetOpen(false) }
     catch (e) { setError((e as Error).message) }
@@ -227,7 +250,7 @@ export default function App() {
     try { setSession(await (session ? refresh() : initialize())); setPending(null); setError('') }
     catch (e) {
       setError((e as Error).message)
-      if (e instanceof ApiError && e.status === 401) setSession(current => current && lockedSession(current))
+      if (e instanceof ApiError && e.status === 401) { setSubmitted(null); setSession(current => current && lockedSession(current)) }
     } finally { sendingRef.current = false; setBusy(false) }
   }
   const summary = pending?.text || session?.assistance_paused ? null : session?.summary
@@ -250,7 +273,7 @@ export default function App() {
             {session?.messages.length===0&&<div className="starter-area"><div className="starter-label">EXPLORING THE DEMO?</div><button ref={demoButton} className="scenario-starter" onClick={showDemo}><span className="starter-icon"><ClipboardList size={18}/></span><span><strong>Try a guided scenario</strong><small>Standard claim, frustrated caller, or ambiguous claim</small></span><ArrowRight size={17}/></button><p className="micro muted"><Info size={12}/> Synthetic records only. Please don’t enter real personal information.</p></div>}
             <div className="assistant-message welcome"><Brand small/><div className="message-body"><span className="message-author">ClaimFlow</span><p>Hello, I’m here to help with your insurance claim.</p><p>We’ll first verify your identity, then look at your claim together and work through the next steps. You can ask questions along the way.</p><p className="muted">To begin, tell me what brings you here and share any three approved identity details: full name, date of birth, phone, email, or SSN / approved national-ID last four.</p></div></div>
 
-            {session?.messages.map(m => <div className={m.role==='user'?'user-message':'assistant-message'} key={m.id}>{m.role==='assistant'&&<Brand small/>}<div className="message-body"><span className="message-author">{m.role==='assistant'?'ClaimFlow':'You'}</span><div className="message-text">{m.text}</div>{m.references.length>0&&<details className="message-grounding"><summary><ShieldCheck size={12}/>Sources · {m.references.length} {m.references.length===1?'source':'sources'}<ChevronDown size={12}/></summary><p className="micro muted">Supporting evidence · synthetic records and supplied guidance</p><ul>{m.references.map(r=><li key={r}>{evidenceLabel(r)}</li>)}</ul></details>}</div></div>)}
+            {session?.messages.map(m => <div className={m.role==='user'?'user-message':'assistant-message'} key={m.id}>{m.role==='assistant'&&<Brand small/>}<div className="message-body"><span className="message-author">{m.role==='assistant'?'ClaimFlow':'You'}</span><div className="message-text">{m.role==='user' ? submittedMessages[m.id] ?? m.text : m.text}</div>{m.references.length>0&&<details className="message-grounding"><summary><ShieldCheck size={12}/>Sources · {m.references.length} {m.references.length===1?'source':'sources'}<ChevronDown size={12}/></summary><p className="micro muted">Supporting evidence · synthetic records and supplied guidance</p><ul>{m.references.map(r=><li key={r}>{evidenceLabel(r)}</li>)}</ul></details>}</div></div>)}
             {pending?.text&&!session?.messages.some(m=>m.id===pending.body.request_id)&&<div className="user-message pending-message"><div className="message-body"><div className="message-text">{pendingLabel(pending.text)}</div><span className={'delivery-status '+(error?'status-bad':'')} role="status">{error?<CircleAlert size={14}/>:<Clock3 size={14}/>} {error?'Not sent · Retry below':'Sending…'}</span></div></div>}
             {!session?.assistance_paused && session?.choices.length ? <div className="case-choices">{session.choices.map(c=><Button variant="outline" size="sm" key={c.case_id} disabled={busy} onClick={()=>void execute({path:'/turn',body:{text:`Please discuss ${c.case_id}. I want its status.`,version:session.version,request_id:crypto.randomUUID()},text:`Please discuss ${c.case_id}. I want its status.`})}><span className="mono">{c.case_id}</span> · {c.created_at.slice(0,4)}<ArrowRight size={13}/></Button>)}</div>:null}
             {session?.assistance_paused && <section className="human-assistance" aria-label="Human assistance recommended">
@@ -261,7 +284,7 @@ export default function App() {
               <h3>Representative Mode</h3><p>Representative identity and policyholder authorization remain required. Providing self-service details here does not change your role.</p>
               <Button variant="outline" size="sm" disabled={busy || !!pending} onClick={()=>setResetOpen(true)}>Start fresh self-service session</Button>
             </section>}
-            {session?.phase === 'VERIFY_ID' && !session.assistance_paused && <IdentityVerification key={session.csrf} disabled={busy || !!pending} onSubmit={fields=>execute({path:'/verify',body:{fields,version:session.version,request_id:crypto.randomUUID()}})}/>}
+            {session?.phase === 'VERIFY_ID' && !session.assistance_paused && <IdentityVerification key={session.csrf} disabled={busy || !!pending} onSubmit={(fields,displayText)=>execute({path:'/verify',body:{fields,version:session.version,request_id:crypto.randomUUID()},displayText})}/>}
             {summary&&<div className="summary-preview"><div className="summary-header"><Mail size={17}/><h3>Claim discussion summary</h3><span>Simulation</span></div><div className="summary-content">{summary.cases?.length ? <>{summary.cases.map(c=><section className="summary-case" key={c.case_id} aria-label={'Summary for '+c.case_id}><div className="summary-claim"><span className="summary-label">Claim</span><h4>{c.case_id} · {c.case_type}</h4><p className="summary-status">{c.status==='Denied'?<CircleAlert size={17} className="status-bad"/>:<CheckCircle2 size={17}/>} {c.status}</p></div><dl>{c.denial_reason&&<div><dt>Reason for denial</dt><dd>{c.denial_reason}</dd></div>}<div><dt>Payment</dt><dd className="summary-payment">{c.payment}</dd><dd className="summary-note">Recorded finalized insurer payment. Allowed maximum: {c.allowed_maximum}, not a promised payout.</dd></div>{c.appeal_deadline&&<div><dt>Appeal deadline</dt><dd className={c.deadline_passed?'deadline-passed':''}>{c.appeal_deadline}{c.deadline_passed?' — Passed':''}</dd></div>}<div><dt>Next steps</dt><dd>{c.next_steps}</dd></div></dl><details className="summary-unresolved"><summary>Still unresolved</summary><p>{c.unresolved}</p></details></section>)}<p className="summary-boundary">This is a synthetic summary. No appeal, payment, document submission, or email delivery has occurred.</p></> : summary.text}</div><div className="summary-recipient"><span>To your on-file email</span><strong>{summary.recipient}</strong></div>
               {['offered','failed','timeout'].includes(summary.status)&&remaining>0?<><p className="micro muted consent-note">Choose explicitly. This offer expires in {Math.floor(remaining/60)}:{String(remaining%60).padStart(2,'0')}. No real email will be delivered.</p><div className="summary-actions"><Button disabled={busy} onClick={()=>action('send')}><Mail size={15}/>{summary.status==='offered'?'Send simulated email':'Retry simulation'}</Button><Button variant="outline" disabled={busy} onClick={()=>action('skip')}>Skip</Button></div></>:<div className="summary-result"><CheckCircle2 size={16}/>{summary.status==='simulated_sent'?'Simulation recorded. No email was delivered.':summary.status==='skipped'?'Skipped. No email was sent.':'Offer expired. No email action was taken.'}{summary.status==='simulated_sent'&&<span className="micro mono">Receipt {summary.receipt}</span>}{summary.status==='expired'&&<Button variant="outline" size="sm" disabled={busy} onClick={()=>action('preview')}>Review a fresh summary</Button>}</div>}
             </div>}
@@ -269,18 +292,19 @@ export default function App() {
           </div>
           {newMessage&&!nearBottom&&<button className="jump-bottom" onClick={()=>{ scrollRef.current?.scrollTo({top:scrollRef.current.scrollHeight,behavior:'smooth'});setNearBottom(true);setNewMessage(false) }}><ArrowDown size={13}/>New message</button>}
           <div className="composer-area">
+            {Object.keys(submittedMessages).length>0&&<div className="transcript-privacy"><span>Your submitted text is visible only in this page.</span><Button variant="ghost" size="sm" disabled={busy} onClick={()=>setSubmitted(null)}>Hide submitted details</Button></div>}
             {error&&<div className="error-banner" role="alert"><Info size={15}/><span>{error}</span>{pending?<Button variant="ghost" size="sm" disabled={busy} onClick={()=>void execute(pending)}>Retry</Button>:<Button variant="ghost" size="sm" disabled={busy} onClick={()=>void recover()}>Recover</Button>}<button aria-label="Dismiss error" onClick={()=>{setError('');setPending(null)}}><X size={15}/></button></div>}
             {session?.verified&&!session.assistance_paused&&session.case_id&&session.phase!=='POST_PROCESS'&&<div className="wrap-up"><span>Have what you need?</span><button disabled={busy} onClick={()=>action('preview')}>Review summary <ArrowRight size={13}/></button></div>}
             {session && session.model_connection?.ready === false && <p className="connection-notice" role="status">Missing key — no API call. Open <button onClick={()=>setSettingsOpen(true)}>Model settings</button> to enter a key or choose Offline Demo.</p>}
             <form className="composer" onSubmit={e=>{e.preventDefault();send()}}><label className="sr-only" htmlFor="message">Message ClaimFlow</label><textarea id="message" ref={inputRef} value={text} maxLength={4000} rows={2} disabled={!session||busy||session.assistance_paused} placeholder={session?.assistance_paused?'Chat is paused · choose Return to chatbot to continue':session?.messages.length?'Ask a follow-up question…':'Tell me about your claim…'} onChange={e=>{setText(e.target.value);if(pending){setPending(null);setError('')}}} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.nativeEvent.isComposing){e.preventDefault();send()}}}/><Button type="submit" size="icon" disabled={!session||busy||session.assistance_paused||!!pending||!text.trim()} aria-label="Send message"><ArrowUp size={19}/></Button></form>
-            <div className="composer-footer"><span><LockKeyhole size={11}/>“[name provided]” and similar labels mean details were hidden for privacy, not verification results.</span><span>Enter to send · Shift + Enter for a new line</span></div>
+            <div className="composer-footer"><span><LockKeyhole size={11}/>Saved history hides identity details. Privacy labels are not verification results.</span><span>Enter to send · Shift + Enter for a new line</span></div>
           </div>
         </section>
         {inspector&&session&&<aside className="inspector-panel" aria-label="Workflow inspector"><Inspector session={session}/></aside>}
       </main>
     </Tabs.Content>
     <Tabs.Content value="lab" className="workspace lab-workspace" forceMount hidden={tab!=='lab'}><EvaluationLab session={session}/></Tabs.Content>
-    {settingsOpen&&session&&<ModelSettings session={session} onApplied={s=>{setSession(s);setText('');setPending(null);setError('');setNearBottom(true);setNewMessage(false)}} onBusy={value=>{if(value)++sessionEpoch.current;sendingRef.current=value;setBusy(value)}} onClose={()=>setSettingsOpen(false)} restoreFocus={()=>settingsButton.current?.focus()}/>}
+    {settingsOpen&&session&&<ModelSettings session={session} onApplied={s=>{setSubmitted(null);setSession(s);setText('');setPending(null);setError('');setNearBottom(true);setNewMessage(false)}} onBusy={value=>{if(value)++sessionEpoch.current;sendingRef.current=value;setBusy(value)}} onClose={()=>setSettingsOpen(false)} restoreFocus={()=>settingsButton.current?.focus()}/>}
     <footer className="app-footer"><span><ShieldCheck size={12}/>A support demo with deterministic SOP controls</span><span>Synthetic identity matching · Simulated actions</span></footer>
     <Dialog.Root open={mobileInspector} onOpenChange={setMobileInspector}><Dialog.Portal><Dialog.Overlay className="dialog-overlay"/><Dialog.Content className="inspector-drawer" onCloseAutoFocus={event=>{event.preventDefault();mobileInspectorButton.current?.focus()}}><Dialog.Title className="sr-only">Workflow inspector</Dialog.Title><Dialog.Description className="sr-only">Verification, context, and sanitized policy decisions</Dialog.Description><Dialog.Close className="dialog-close" aria-label="Close workflow inspector"><X size={20}/></Dialog.Close>{session&&<Inspector session={session}/>}</Dialog.Content></Dialog.Portal></Dialog.Root>
     <Dialog.Root open={demoOpen} onOpenChange={setDemoOpen}><Dialog.Portal><Dialog.Overlay className="dialog-overlay"/><Dialog.Content className="demo-dialog" onCloseAutoFocus={e=>{e.preventDefault();(demoInserted.current?inputRef:demoButton).current?.focus()}}><span className="eyebrow">SYNTHETIC DEMO SCENARIO</span><Dialog.Title>Choose a demo scenario</Dialog.Title><Dialog.Description>Explore the complete workflow with a fictional policyholder. These details are supplied test data, not real credentials.</Dialog.Description>{demo&&selectedDemo?<><div className="demo-scenarios" role="group" aria-label="Demo scenarios">{demo.scenarios.map(s=><Button key={s.id} variant="outline" aria-pressed={demoChoice===s.id} onClick={()=>setDemoChoice(s.id)}>{s.name}</Button>)}</div><p className="demo-context">{selectedDemo.description}</p><div className="demo-opening">{selectedDemo.opening}</div>{demoChoice==='frustrated'&&<details className="demo-identity"><summary>Synthetic identity for the next message</summary><p>{demo.opening}</p></details>}<Button onClick={()=>{demoInserted.current=true;setText(selectedDemo.opening);setDemoOpen(false)}}>Use this opening message<ArrowRight size={16}/></Button></>:demoError?<div><p role="alert">{demoError}</p><Button onClick={showDemo}>Retry loading scenarios</Button></div>:<p role="status">Loading synthetic scenario…</p>}<Dialog.Close className="dialog-close" aria-label="Close demo scenario"><X size={20}/></Dialog.Close></Dialog.Content></Dialog.Portal></Dialog.Root>
