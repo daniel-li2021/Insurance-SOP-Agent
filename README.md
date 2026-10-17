@@ -45,9 +45,9 @@ The [public demo](https://claimflow-demo.onrender.com/) is live. A short HTTPS/o
 npm --prefix frontend run build
 ```
 
-Install local dependencies first using the [usage guide](docs/USAGE.md). Historical model and browser acceptance is recorded in [validation evidence](docs/VALIDATION.md); the [deployment guide](docs/DEPLOYMENT.md#preparation-validation) records checks for this preparation. Small synthetic probes do not establish general model reliability.
+Install local dependencies first using the [usage guide](docs/USAGE.md). The [current review and validation](docs/VALIDATION.md) separates offline regressions, mocked model contracts and historical live acceptance. Small synthetic probes do not establish general model reliability.
 
-To download the source and upload it to the original assignment repository, follow the [GitHub handoff and requirement checklist](docs/HANDOFF.md). The Docker repository with setup instructions satisfies the assignment's delivery alternative; the hosted demo is also available at the link above.
+The Docker repository with setup instructions satisfies the assignment's delivery alternative. To package a reviewed commit, use `git archive --format=zip --prefix=ClaimFlow/ --output=/tmp/ClaimFlow-source.zip HEAD`; ignored local notes, credentials and sessions are excluded.
 
 ## Scope and documentation
 
@@ -55,7 +55,9 @@ This is a portfolio prototype using six supplied synthetic fixtures, not product
 
 - [Usage, model settings and operational limits](docs/USAGE.md)
 - [Render setup, security profile and post-deploy checks](docs/DEPLOYMENT.md)
-- [GitHub handoff and assignment coverage](docs/HANDOFF.md)
-- [Architecture](docs/ARCHITECTURE.md) · [Validation history](docs/VALIDATION.md)
-- [Original assignment](requirement.md) · [Original fixtures](insurance_claims/fixtures)
-- [Reuse decisions](docs/REUSE.md) · [Third-party notices](THIRD_PARTY_NOTICES.md)
+- [Architecture](docs/ARCHITECTURE.md) · [Main plan](docs/PLAN.md)
+- [Review, requirement coverage and validation](docs/VALIDATION.md)
+- [Original assignment](docs/ASSIGNMENT.md) · [Original fixtures](docs/fixtures)
+- [Third-party notices](THIRD_PARTY_NOTICES.md)
+
+Superseded proposals, implementation notes, raw receipts and extra screenshots stay local and are ignored. The public docs above are the maintained entry points. Ignoring files removes them from future source snapshots; previous commits still contain their historical versions.

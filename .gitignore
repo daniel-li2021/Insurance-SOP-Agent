@@ -12,3 +12,22 @@ test-results/
 playwright-report/
 .DS_Store
 *.tsbuildinfo
+
+# Historical working notes and receipts stay local; publish the current guides only.
+docs/local/
+docs/evidence/
+docs/HANDOFF.md
+docs/POST_UAT.md
+docs/PROPOSAL.md
+docs/UI_ADJUSTMENTS.md
+docs/FINAL_VALIDATION.md
+docs/RELIABILITY_REVIEW.md
+docs/SMALL_POLISH.md
+docs/UX_RECOVERY.md
+docs/REUSE.md
+docs/claimflow-preview.jpg
+docs/screenshots/*
+!docs/screenshots/post-uat-summary.png
+!docs/screenshots/final-lab.jpg
+!docs/screenshots/final-mobile-start.png
+!docs/screenshots/final-settings-mobile.png

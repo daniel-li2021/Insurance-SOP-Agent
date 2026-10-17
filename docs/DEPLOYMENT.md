@@ -2,7 +2,7 @@
 
 Status: **[public demo live](https://claimflow-demo.onrender.com/)**, deployed manually by the owner. The initial preparation baseline was GitHub `main` at `b5bc3e9`; that preparation created no Render resources.
 
-A short public smoke check on October 17, 2026 passed trusted HTTPS, the UI and two hashed assets, offline health (`328f5c17f69b` fixtures), Secure/HttpOnly/SameSite cookies, CSRF and foreign-origin rejection, disabled owner credentials, hidden docs/schema/private-file paths, synthetic identity verification and summary preview. No paid model calls or Render configuration changes were made. The owner requested no further inspection; public restart persistence, disk configuration, live providers, load and availability were not checked. The subsequent header-label change is committed source and requires a manual Render deploy to appear publicly.
+A short public smoke check on October 17, 2026 passed trusted HTTPS, the UI and two hashed assets, offline health (`328f5c17f69b` fixtures), Secure/HttpOnly/SameSite cookies, CSRF and foreign-origin rejection, disabled owner credentials, hidden docs/schema/private-file paths, synthetic identity verification and summary preview. No paid model calls or Render configuration changes were made. The owner requested no further inspection; public restart persistence, disk configuration, live providers, load and availability were not checked. Subsequent source changes, including the review fixes in [VALIDATION.md](VALIDATION.md), require owner review, integration and a manual Render deploy to appear publicly. This review did not inspect or change the public service.
 
 ## Hosting profile
 
@@ -14,7 +14,7 @@ The disk stores the encrypted SQLite database, encryption key, rate buckets and 
 
 ## Deploy manually after review
 
-1. Push the reviewed files to `main` in the GitHub repository you intend to deploy. If transferring the project, follow [the handoff guide](HANDOFF.md) first. Confirm the root contains `render.yaml`, `Dockerfile`, both dependency lockfiles, `backend/`, `frontend/` and the fixtures.
+1. Push the reviewed files to `main` in the GitHub repository you intend to deploy. Confirm the root contains `render.yaml`, `Dockerfile`, both dependency lockfiles, `backend/`, `frontend/` and the fixtures.
 2. In the [Render Dashboard](https://dashboard.render.com), connect GitHub with access to that repository. Choose **New → Blueprint**, select the repository and `main`, and review `render.yaml`.
 3. Confirm one paid web service and one 1 GB disk, the branch, region and pricing. Review the environment settings below. No owner API key is required.
 4. **Stop here until you intend to deploy.** Clicking the final create/apply control starts the initial build and deployment. `autoDeployTrigger: off` prevents subsequent Git pushes from automatically deploying; it does not suppress the first deployment. Keep any dashboard Blueprint auto-sync setting manual as well if you want to review infrastructure changes before applying them.
@@ -43,7 +43,7 @@ Existing controls include request-size/CSRF/origin checks, two concurrent model 
 
 - Open the HTTPS URL. Confirm the UI loads, displays Offline/Scripted, and offers guided scenarios. `/api/health` should return `status: ok`, `mode: scripted`, `model: scripted` and a fixture version. This is a process/fixture check; it does not validate live provider access or disk capacity.
 - Run Standard Claim using synthetic details: verification → denied January claim → document/payment follow-up → summary → Send simulation or Skip. Check the Workflow Inspector and one scripted Evaluation Lab replay.
-- Confirm `/api/docs`, `/openapi.json`, `/.env`, `/data/sessions.sqlite3` and `/insurance_claims/fixtures/claims.json` return 404. Confirm session cookies have Secure, HttpOnly and SameSite=Strict and cross-origin mutations fail.
+- Confirm `/api/docs`, `/openapi.json`, `/.env`, `/data/sessions.sqlite3` and `/docs/fixtures/claims.json` return 404. Confirm session cookies have Secure, HttpOnly and SameSite=Strict and cross-origin mutations fail.
 - Refresh the page; then manually restart/redeploy and confirm the committed session returns. Verify `/app/data` is writable by the container user and retained; do not delete the disk to fix permissions. If live testing is desired, use your own limited key and expect a paid probe/turn; no live call is needed for the offline smoke.
 - Once verified, add the actual HTTPS demo URL near the top of the README. Do not publish an invented or pending URL as live.
 
@@ -51,17 +51,11 @@ If startup fails: inspect Render logs for invalid HTTPS origins, a malformed enc
 
 For backups, use SQLite's online backup API and preserve the matching encryption key securely. Do not treat a filesystem snapshot as proof of a consistent running SQLite backup. Keep backups, visitor state and keys outside Git/source packages.
 
-## Preparation validation
+## Validation scope
 
-October 17, 2026, on baseline `b5bc3e9` plus this preparation:
+The original deployment preparation used baseline `b5bc3e9` and passed 63 focused backend cases, a Linux/ARM64 Docker build, three Chromium journeys against a local HTTPS production-profile container, HTTP security checks and persisted session/budget restart checks. A later short public offline smoke check is described above. Those are historical runs; the owner-managed public service was not inspected during the current review.
 
-- **63 focused backend tests pass**: `tests/test_deployment.py`, `tests/test_api.py` and `tests/test_settings.py`, including all 23 shared policy scenarios. New checks cover production origin fallback/rejection/override, Secure cookies, disabled local credentials, hidden schema/files, session recovery and the persisted token ledger. The existing Starlette/httpx deprecation warning remains.
-- **Production TypeScript/Vite build and Docker build pass.** Local Docker image ID: `sha256:6380e3207ac3d2637e31fdf7655eaaf659c227d4bf5d39950070193c6c815874`, Linux/ARM64. The unchanged Docker CMD was exercised with `PORT=10000`, `APP_ENV=production` and a disposable named volume; UID is 10001.
-- **Three existing Chromium journeys pass against that production image**: complete summary/Send/refresh, January ambiguity/Skip, and Evaluation Lab replay/reset. A temporary local HTTPS proxy used a self-signed certificate; certificate checks were relaxed only in that isolated test harness. Chromium required launch outside the macOS filesystem sandbox. No browser dependencies were installed.
-- **Production-image HTTP smoke and restart persistence pass**: UI and hashed assets, health, Secure/HttpOnly/SameSite cookie, hidden docs/schema/files, foreign-origin rejection, CSRF-protected synthetic verification, and committed session recovery after Docker restart with the same volume.
-- **Render's published JSON Schema accepts `render.yaml`**. Render CLI is not installed; no authenticated platform validation or Blueprint apply was performed. Local documentation links resolve, `git diff --check` passes, and the assignment, six fixtures and dependency lockfiles are unchanged.
-
-No paid model calls were made. Unchanged UI/controller live acceptance is reused from [earlier validation](VALIDATION.md) without extending its scope. The full backend/browser suites and AMD64 Docker execution were not rerun. Render deployment, platform-mounted disk behavior, public TLS, proxy behavior and hosted capacity still require the manual checks above; local acceptance does not establish those properties.
+Current source acceptance, exact test counts, review findings, final image identity and remaining limits are maintained in [VALIDATION.md](VALIDATION.md). Review that report before integrating and manually releasing this branch. Local Docker evidence does not establish hosted availability, public persistence or live provider quality.
 
 ## Platform references
 

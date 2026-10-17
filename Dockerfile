@@ -11,7 +11,7 @@ WORKDIR /app
 COPY requirements.lock ./
 RUN pip install --no-cache-dir -r requirements.lock && useradd --uid 10001 --create-home claimflow
 COPY backend/ ./backend/
-COPY insurance_claims/fixtures/ ./insurance_claims/fixtures/
+COPY docs/fixtures/ ./docs/fixtures/
 COPY --from=frontend /build/dist ./frontend/dist
 RUN mkdir -p /app/data && chown -R claimflow:claimflow /app
 USER claimflow

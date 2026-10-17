@@ -24,4 +24,4 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
-Packaged dependencies (including React, Radix Primitives, Tailwind CSS, Lucide, FastAPI, Pydantic, OpenAI's SDK, and cryptography) retain their own licenses in the installed distributions. Exact resolved versions are recorded in `frontend/package-lock.json` and `requirements.lock`. See [the research decisions](docs/REUSE.md) for projects referenced without copying their source.
+Packaged dependencies (including React, Radix Primitives, Tailwind CSS, Lucide, FastAPI, Pydantic, OpenAI's SDK, and cryptography) retain their own licenses in the installed distributions. Exact resolved versions are recorded in `frontend/package-lock.json` and `requirements.lock`. The [architecture](docs/ARCHITECTURE.md) records implementation choices; this notice preserves the attribution for adapted source.
