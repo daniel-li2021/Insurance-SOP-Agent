@@ -2,6 +2,7 @@ import os
 import secrets
 import time
 import asyncio
+import math
 from pathlib import Path
 from typing import Literal
 from uuid import UUID
@@ -10,11 +11,11 @@ from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import Field
+from pydantic import Field, model_validator
 from .controller import Controller
 from .fixtures import Fixtures, ROOT
 from .interpreter import LiveInterpreter, ScriptedInterpreter, ModelFailure
-from .models import StrictModel, Session
+from .models import Candidate, Interpretation, StrictModel, Session
 from .settings import Settings, SettingsRequest
 from .providers import validate_selection
 from .store import Store, Conflict, Limited
@@ -31,6 +32,24 @@ class ActionRequest(StrictModel):
     version: int = Field(ge=0)
     action: Literal['preview', 'send', 'skip']
     summary_id: UUID | None = None
+
+
+class VerificationField(StrictModel):
+    field: Literal['name', 'dob', 'phone', 'email', 'id_last4']
+    value: str = Field(min_length=1, max_length=160)
+    identifier_type: Literal['ssn_last4', 'national_id_last4', 'unspecified'] = 'unspecified'
+
+
+class VerificationRequest(StrictModel):
+    request_id: UUID
+    version: int = Field(ge=0)
+    fields: list[VerificationField] = Field(min_length=3, max_length=3)
+
+    @model_validator(mode='after')
+    def distinct_fields(self):
+        if len({f.field for f in self.fields}) != 3 or any(not f.value.strip() for f in self.fields):
+            raise ValueError('Choose three distinct approved fields.')
+        return self
 
 
 def create_app(directory: Path | None = None, interpreter=None, clock=time.time):
@@ -91,7 +110,7 @@ def create_app(directory: Path | None = None, interpreter=None, clock=time.time)
     async def conflict_handler(request, exc): return JSONResponse({'detail': str(exc)}, status_code=409)
 
     @app.exception_handler(Limited)
-    async def limited_handler(request, exc): return JSONResponse({'detail': str(exc)}, status_code=429, headers={'Retry-After':'60'})
+    async def limited_handler(request, exc): return JSONResponse({'detail': str(exc)}, status_code=429, headers={'Retry-After':str(exc.retry_after)})
 
     @app.exception_handler(KeyError)
     async def session_handler(request, exc): return JSONResponse({'detail':'Session expired. Start a new session.'}, status_code=401)
@@ -185,7 +204,10 @@ def create_app(directory: Path | None = None, interpreter=None, clock=time.time)
 
     @app.post('/api/session')
     def start(request: Request, response: Response):
-        store.limit('new:' + client_key(request), 12, 3600, clock())
+        try:
+            store.limit('new:' + client_key(request), 12, 3600, clock())
+        except Limited as error:
+            raise Limited(f'New session limit reached (12 per hour). Try again in {math.ceil(error.retry_after / 60)} minutes. Refreshing will not reset this limit. Your current session has been kept.', error.retry_after) from None
         old = request.cookies.get('claimflow_session')
         if old: store.remove(old)
         cookie, csrf, state = store.create(clock())
@@ -201,26 +223,48 @@ def create_app(directory: Path | None = None, interpreter=None, clock=time.time)
 
     @app.post('/api/turn')
     async def turn(payload: TurnRequest, request: Request):
+        return await process_turn(payload, request)
+
+    @app.post('/api/verify')
+    async def verification(payload: VerificationRequest, request: Request):
+        return await process_turn(payload, request)
+
+    async def process_turn(payload: TurnRequest | VerificationRequest, request: Request):
         cookie, _, csrf = session(request, True)
-        if not payload.text.strip(): raise HTTPException(422, 'Enter a message.')
-        fingerprint = store.fingerprint(payload.text)
+        form = isinstance(payload, VerificationRequest)
+        text = '\n'.join(f'{f.field}: {f.value}' for f in payload.fields) if form else payload.text
+        if not text.strip(): raise HTTPException(422, 'Enter a message.')
+        fingerprint = store.fingerprint('verify:' + payload.model_dump_json(exclude={'version', 'request_id'}) if form else text)
         state, lease = store.acquire(cookie, str(payload.request_id), payload.version, fingerprint, clock())
         if lease is None: return view(state, csrf)
         try:
             controller.expire(state, clock())
+            if form and (state.phase != 'VERIFY_ID' or state.assistance_paused):
+                raise ValueError('The verification form is no longer active. Continue from the current conversation.')
+            pause_control = not form and (state.assistance_paused or controller.wants_human(text))
             if state.turns >= 40: raise Limited('This demo session has reached its turn limit. Start a new session.')
-            if state.verification_attempts >= 6 and not state.party_id:
+            if state.verification_attempts >= 6 and not state.party_id and not pause_control:
                 raise Limited('Identity attempt limit reached. Contact member support or start a new synthetic scenario later.')
             store.limit('turn:' + client_key(request), 30, 600, clock())
-            selected = settings.interpreter(state)
-            state.model = selected.name
-            try:
-                interpreted, usage = await interpret(selected, payload.text, state)
-            except (ModelFailure, TimeoutError):
-                # Do not persist the raw failed input or advance workflow state.
-                raise HTTPException(503, 'The language service is unavailable. Your session is safe; retry your message.') from None
-            state.event('INTERPRETED', f'{usage["latency_ms"]} ms · {usage["tokens"]} tokens · structured interpretation; policy decided by code.', clock())
-            controller.answer(state, payload.text, interpreted, clock(), str(payload.request_id))
+            if form:
+                subject = 'policyholder' if state.representative else 'caller'
+                interpreted = Interpretation(identity=[Candidate(**f.model_dump(), source=f.value, subject=subject) for f in payload.fields], correction=True)
+                state.event('VERIFICATION_FORM_SUBMITTED', 'Three distinct caller-supplied fields; existing identity rules decide authorization. Selected fields explicitly corrected.', clock())
+            elif pause_control:
+                # Human-request recovery must work even when a provider is unavailable.
+                interpreted, _ = await ScriptedInterpreter().interpret(text, state)
+                interpreted.action = 'human' if controller.wants_human(text) else 'continue'
+                state.event('ASSISTANCE_CONTROL', 'Pause/return handled without model inference or claim access.', clock())
+            else:
+                selected = settings.interpreter(state)
+                state.model = selected.name
+                try:
+                    interpreted, usage = await interpret(selected, text, state)
+                except (ModelFailure, TimeoutError):
+                    # Do not persist the raw failed input or advance workflow state.
+                    raise HTTPException(503, 'The language service is unavailable. Your session is safe; retry your message.') from None
+                state.event('INTERPRETED', f'{usage["latency_ms"]} ms · {usage["tokens"]} tokens · structured interpretation; policy decided by code.', clock())
+            controller.answer(state, text, interpreted, clock(), str(payload.request_id))
             store.commit(cookie, lease, str(payload.request_id), fingerprint, state, clock())
             return view(state, csrf)
         finally:

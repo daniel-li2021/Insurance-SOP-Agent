@@ -22,6 +22,12 @@ class Controller:
     def __init__(self, fixtures: Fixtures):
         self.f = fixtures
 
+    @staticmethod
+    def wants_human(text: str) -> bool:
+        return bool(re.search(
+            r'\b(?:human|transfer me|no (?:more )?ai)\b|\b(?:stop|pause) (?:the |this )?(?:ai|chatbot|chat)\b|'
+            r'\b(?:don[’\']t|do not) want (?:to (?:talk|speak) to |the |any |this )?(?:ai|chatbot)\b', text, re.I))
+
     def expire(self, s: Session, now: float):
         grant = s.grant or {}
         grant_invalid = s.representative and not (
@@ -71,6 +77,21 @@ class Controller:
     def answer(self, s: Session, text: str, i: Interpretation, now: float, message_id: str) -> Session:
         self.expire(s, now)
         s.turns += 1
+        # Pause before identity/claim/consent processing; acknowledgments cannot restart it.
+        human_request = i.action == 'human' or self.wants_human(text)
+        if human_request or s.assistance_paused:
+            s.messages.append(Message(id=message_id, role='user', text=self.redact(text, i), protected=bool(s.party_id)))
+            if s.assistance_paused and not human_request and text.strip(' .!').casefold() in (
+                    'return to chatbot', 'resume chat', 'continue with chatbot'):
+                s.assistance_paused = False
+                s.event('CHAT_RESUMED', 'Caller voluntarily returned to chat assistance.', now)
+                return self.reply(s, '', 'We can continue from your saved conversation. What would you like help with?', now)
+            if not s.assistance_paused:
+                s.assistance_paused = True
+                s.human_offered = True
+                s.event('HUMAN_ASSISTANCE_REQUESTED', 'Chat paused. Demo cannot transfer or create a support request.', now)
+                return self.reply(s, '', 'I understand you’d like a human representative. This demo cannot make a real transfer or create a support request. Please contact your insurer’s official member support directly. Chat assistance is paused; you can return whenever you choose.', now)
+            return s
         if (s.phase == 'POST_PROCESS' and s.summary and s.summary.status in ('offered','failed','timeout')
                 and text.strip().casefold() in ('yes','send','send it','skip')):
             s.messages.append(Message(id=message_id, role='user', text=text, protected=True))
@@ -152,9 +173,6 @@ class Controller:
                 s.human_offered = True
                 s.event('REPRESENTATIVE_BLOCKED', 'Relationship is not identity proof or authorization.', now)
                 return self.reply(s, prefix, 'I understand you’re helping someone else. Being a relative or knowing their details does not authorize access. I need verified representative identity and a policyholder authorization covering this claim. The supplied demo records do not provide those proofs. Please contact the insurer’s member support to establish authorization; no transfer has occurred.', now)
-        if i.action == 'human':
-            s.human_offered = True
-            return self.reply(s, prefix, 'I can suggest asking your insurer’s member support for a human claims representative. This demo cannot transfer you or create a support request. You can continue here if you prefer.', now)
         if i.intent == 'out_of_scope':
             s.scope_streak += 1
             s.event('OUT_OF_SCOPE', 'Request limited to insurance claim support.', now)
@@ -169,9 +187,22 @@ class Controller:
             if s.verification_attempts >= 6:
                 s.human_offered = True
                 return self.reply(s, prefix, 'I’m unable to verify these details. Please contact member support for help with identity verification. Claim access remains locked; no transfer has occurred.', now)
-            msg = 'To protect claim information, I need three distinct matching identity fields. Verification is not complete. Please provide or explicitly correct your full name, date of birth (YYYY-MM-DD), phone, email, or SSN / approved national-ID last four. A policy number can locate a record but does not count toward verification. I cannot reveal which details match.'
+            refusal = bool(re.search(r'\b(?:ssn|social security|last four|last 4)\b', text, re.I)) and (
+                i.emotion == 'refusing' or bool(re.search(r'refus|won[’\']t|don[’\']t|do not|not (?:sharing|comfortable)|rather not|without', text, re.I)))
+            if refusal:
+                prefix = '' if i.emotion == 'refusing' else prefix
+                msg = 'You don’t need to share SSN details. Full name + DOB (YYYY-MM-DD) + phone is accepted, or choose any three distinct approved fields including email. All three must match the same policyholder. You can use chat or the optional verification form.'
+            elif re.search(r'\b(?:dob|date of birth|born)\b.*\b\d{1,2}/\d{1,2}/\d{4}\b', text, re.I):
+                msg = 'Please enter your birth date as YYYY-MM-DD (for example, 1985-03-15) to avoid numeric-date ambiguity. Verification remains incomplete.'
+            elif s.verification_prompted:
+                msg = 'Verification is still incomplete. You can provide or explicitly correct your chosen details in chat, or use the optional form. I cannot reveal which details match.'
+            else:
+                msg = 'To protect claim information, I need three distinct matching identity fields. Verification is not complete. Please share full name, DOB (YYYY-MM-DD), phone, email, or SSN / approved ID last four. A policy number does not count. I cannot reveal which details match. You can also use the optional verification form.'
+            s.verification_prompted = True
             s.unresolved = ['Complete identity verification']
-            if s.hints: msg += ' I’ve kept your claim question for after verification.'
+            if s.hints and not any(e.code == 'VERIFICATION_REQUESTED' for e in s.events):
+                msg += ' I’ve kept your claim question for after verification.'
+            s.event('VERIFICATION_REQUESTED', 'Verification incomplete; no partial match results disclosed.', now)
             return self.reply(s, prefix, msg, now)
         s.auth_until = now + AUTH_SECONDS
         if s.phase == 'VERIFY_ID':
@@ -357,7 +388,7 @@ class Controller:
                 'intent': s.intent, 'case_id': s.case_id if authorized else None,
                 'case_status': s.case_status if authorized and s.case_id else None,
                 'choices': s.choices if authorized else [], 'emotion': s.emotion,
-                'human_offered': s.human_offered, 'unresolved': s.unresolved,
+                'human_offered': s.human_offered, 'assistance_paused': s.assistance_paused, 'unresolved': s.unresolved,
                 'messages': [m.model_dump() for m in s.messages if authorized or not m.protected],
                 'events': [{**e.model_dump(exclude={'party_id'}), **({'detail': 'Identity evaluated; partial match results are private.'}
                             if e.code == 'IDENTITY_EVALUATED' else {})}

@@ -3,6 +3,7 @@ import hashlib
 import hmac
 import os
 import secrets
+import math
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
@@ -15,7 +16,9 @@ class Conflict(Exception):
 
 
 class Limited(Exception):
-    pass
+    def __init__(self, message: str, retry_after: int = 60):
+        super().__init__(message)
+        self.retry_after = retry_after
 
 
 class Store:
@@ -135,7 +138,8 @@ class Store:
         with self.db() as db:
             db.execute('BEGIN IMMEDIATE')
             old = db.execute('SELECT used FROM limits WHERE key=?', (encoded,)).fetchone()
-            if old and old['used'] >= maximum: raise Limited('Too many requests. Please try again later.')
+            if old and old['used'] >= maximum:
+                raise Limited('Too many requests. Please try again later.', max(1, math.ceil((bucket + 1) * period - now)))
             db.execute('DELETE FROM limits WHERE expires < ?', (now,))
             db.execute('INSERT INTO limits (key,used,expires) VALUES (?,1,?) ON CONFLICT(key) DO UPDATE SET used=used+1', (encoded, (bucket+1)*period))
 

@@ -115,6 +115,8 @@ class Session(StrictModel):
     scope_streak: int = 0
     verification_attempts: int = 0
     human_offered: bool = False
+    assistance_paused: bool = False
+    verification_prompted: bool = False
     messages: list[Message] = Field(default_factory=list)
     events: list[Event] = Field(default_factory=list)
     summary: Summary | None = None
