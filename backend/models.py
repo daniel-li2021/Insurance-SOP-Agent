@@ -112,6 +112,7 @@ class Session(StrictModel):
     discussed_by_case: dict[str, list[str]] = Field(default_factory=dict)
     pending_topics: list[Topic] = Field(default_factory=list)
     pending_documents: list[str] = Field(default_factory=list)
+    pending_alternatives_exhausted: bool = False
     context_notes: list[dict] = Field(default_factory=list)
     scope_streak: int = 0
     verification_attempts: int = 0

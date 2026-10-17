@@ -4,7 +4,7 @@ import time
 from datetime import datetime
 from openai import AsyncOpenAI, APIStatusError
 from .models import Interpretation, Session
-from .identity import extract_identity
+from .identity import extract_identity, representative_signal
 
 PROMPT_VERSION = 'claimflow-extract-v4'
 INSTRUCTIONS = '''You interpret caller messages for a synthetic insurance support demo.
@@ -88,7 +88,7 @@ class ScriptedInterpreter:
     async def interpret(self, text: str, state: Session) -> tuple[Interpretation, dict]:
         s = text.casefold()
         out = Interpretation()
-        out.representative = bool(re.search(r'\b(on behalf|my mother|my mom|her son|representative|i.m david)\b', s))
+        out.representative = representative_signal(text) or bool(re.search(r'\brepresentative\b', s))
         out.correction = bool(re.search(r'\b(actually|correction|correct|meant|sorry|instead|wrong)\b', s))
         out.identity = extract_identity(text, state, out.correction)
         if re.search(r'\b(health|medical|healthcare)\b', s): out.case_type = 'healthcare'

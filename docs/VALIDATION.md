@@ -1,92 +1,50 @@
-# Public demo smoke and header label — October 17, 2026
+# ClaimFlow review and validation
 
-[ClaimFlow is live](https://claimflow-demo.onrender.com/). Trusted HTTPS, UI/assets, offline health, session-cookie flags, CSRF/foreign-origin rejection, hidden private/schema paths, disabled local credentials, synthetic verification and summary preview passed a short public smoke check. See [deployment details and limits](DEPLOYMENT.md). The Lab badge was then moved into the header and the production frontend build passed. No further inspection or browser/backend tests were run after the owner requested stopping checks; no paid model calls or deployment actions were made.
+Reviewed October 17, 2026 against GitHub main `9bb61be124aca32210bc7549f6b18b708d486b07`, confirmed through the connected GitHub API. The review branch contains focused corrections; main and the hosted service are unchanged. Three independent reviewers covered authorization, conversation/Bonus behavior, and frontend/session reliability; the lead reproduced important security cases and integrated the changes.
 
-# Render portfolio preparation — October 17, 2026
+## Assignment and Bonus coverage
 
-**63 focused backend tests**, including all 23 shared policy scenarios, the production frontend/Docker builds, and **three Chromium journeys against the local production Docker image pass**. Production origin checks, Secure cookies, hidden schema/files, offline startup, disabled local keys and persisted session/token state are covered. The Blueprint passes Render's published JSON Schema. No paid model calls or Render deployments were made. Exact local image identity, scope and pending hosted checks are in [the deployment guide](DEPLOYMENT.md#preparation-validation).
+| Requirement | Assessment |
+| --- | --- |
+| Four ordered SOP phases | Implemented and covered by shared policy scenarios and HTTP journeys. Early context does not authorize reads. |
+| Three distinct approved identity fields | Deterministic matching for one policyholder; policy number excluded, conflicts fail closed, no partial-match feedback. Optional form uses the same gate without a model call. |
+| Authorization, privacy, representatives | Per-read party/expiry checks; cross-policyholder claims denied. Representative relationships and chat assertions cannot create grants. Public representative flow remains locked; successful grants are evaluator-only. |
+| Early memory, ambiguity, grounded reasoning | Retains intent, claim hints, pending questions and document constraints; asks before choosing ambiguous records. Facts, money meanings and expired deadlines come from fixtures. |
+| Summary and explicit Send/Skip | Current preview, on-file recipient, expiry, deduplication and fresh consent. Cross-claim summaries preserve discussion and unresolved receipt questions. Sending is simulated. |
+| Scope rejection and repeated retries | Polite redirection and human-support offer; explicit human requests pause assistance without a real transfer. |
+| Emotional support / SOP recovery Bonus | Bounded empathy for frustration, anxiety, confusion and refusal; explains privacy, offers alternate fields and human support without bypassing gates. Not a general emotion-recognition benchmark. |
+| API token, text UI, full workflow, delivery | BYOK settings and a React Playground/Inspector/Lab; Docker source and setup satisfy the repository delivery alternative. The README records a previously published demo; this review neither deployed nor retested it. |
 
-# Playground space and key-status follow-up — October 17, 2026
+Offline parsing is limited and responses use deterministic templates. Passing policy tests establishes the tested controller behavior, not broad live language quality or production identity assurance.
 
-The production frontend build and **five focused local Chromium journeys pass** after adding the visible missing-key status, reversible heading collapse, left workflow rail and shorter composer. Desktop/mobile screenshots were visually inspected. See [UX Recovery](UX_RECOVERY.md) for coverage and limits. The subsequent top-space adjustment also passed the build and three affected browser journeys; expanded panels now align directly below app navigation, with a full-height rail and Back control. Backend code is unchanged; prior backend evidence is reused, with no new paid model calls or Docker rebuild.
+## Confirmed findings, ordered by severity
 
-# Final small polish — October 17, 2026
+No P0 was confirmed in this review. This is not a proof that none exists.
 
-**114 focused backend checks**, including the existing 23 policy scenarios, **four local Chromium journeys**, and the production TypeScript/Vite build pass. Three pre-edit live turns did not reproduce the exact reported payment failure; a valid missing-topic interpretation reproduced it deterministically. Five final live turns passed payment/DOB recovery and document-exhaustion acceptance, using the existing local `.env`. All eight live calls used **10,117 tokens**, with no retries. See the [scope, investigation, screenshots and limits](SMALL_POLISH.md) and [sanitized receipt](evidence/small-polish-live.json).
+| Priority | Confirmed issue and root cause | Correction and affected files |
+| --- | --- | --- |
+| P1 | Human-assistance early returns ran before caller-role and identity revocation. A verified caller could identify as another person or an unauthorized representative and retain protected history and an active summary. | Apply sticky representative detection and expire incompatible access before pause/resume; evaluate conflicting literal identity on the pause path without granting new access. `backend/controller.py`, `backend/identity.py`, `backend/interpreter.py`, `tests/test_security_audit.py`. |
+| P1 | Explicit third-party friend/client/patient identity could be treated as self-service by the offline parser. | Shared bounded representative cues protect both interpreter and controller; incidental friend mentions do not block self-service. Same files and regressions as above. |
+| P2 | Exhausted document alternatives reported during verification were recorded but not used after verification. | Carry the pending constraint to the first grounded answer; clear it after consumption and across identity/auth/case resets. `backend/controller.py`, `backend/models.py`, `tests/test_conversation_audit.py`. |
+| P2 | Revisiting a claim reset its topics and overwrote per-claim summary memory, dropping unresolved receipt questions. | Restore that claim's earlier discussion before adding new topics. `backend/controller.py`, `tests/test_conversation_audit.py`. |
+| P2 | Switching directly to another claim while requesting a summary omitted the newly selected claim. | Summarize the union of prior discussed claims and the current authorized claim. Same controller/tests. |
 
-The sections below retain earlier verification as historical evidence.
+Original defects were reproduced before fixing. Security regressions cover denied reads and sends after role/identity changes, including paused conversations. Conversation regressions cover consumption and all three reset boundaries. No speculative architectural changes or minor cosmetic fixes were added.
 
-# Current identity UX acceptance — October 17, 2026
+## Current backend evidence
 
-**229 backend checks**, including the existing 23 policy scenarios, the production TypeScript/Vite build, and **21 distinct local Chromium journeys** pass. The form now offers explicit synthetic autofill and inline desktop fields, common identity formats normalize deterministically, representative state has a fresh-session control, Sources remain visible and auditable, and paused message submission is disabled/rejected. Optional encrypted BYOK retention preserves only model settings; no-retention reset shows **Missing key — no API call**.
+- Baseline: **248/248 pytest cases passed** before changes.
+- Final backend/policy: **263/263 pytest cases passed**, including existing API, identity, provider, settings, deployment and 23 shared policy scenario cases. Fifteen focused regressions were added.
+- CLI: **23/23 scripted policy scenarios passed** independently; same runner used by the Evaluation Lab. These overlap pytest coverage and are not an additional independent sample.
+- Tests use temporary stores, scripted/mocked providers and fixed clocks. No real sessions, credentials or data were modified. One existing Starlette TestClient/httpx deprecation warning remains.
+- Frontend build passed; browser and final Docker acceptance are recorded below when complete.
 
-Fresh baseline structured/natural live inputs already verified the exact requested details; that particular failure was not reproduced. Confirmed format/state gaps and compatibility changes are detailed in [UX Recovery](UX_RECOVERY.md). Final live HTTP acceptance passed five bounded synthetic turns using 6,321 tokens; two baseline calls used 2,516 tokens (seven total calls, 8,837 tokens, no retries). [Sanitized live receipt](evidence/identity-ux-live.json). Other-provider acceptance, public hosting, Docker rebuild and real insurer operations remain unverified in this batch.
+## Remaining risks and intentional limits
 
-# Earlier verification and recovery — October 17, 2026
+- No new paid model calls. Historical local acceptance receipts include a 12-call OpenAI synthetic corpus (12/12 checks; 13,139 tokens) and later bounded checks; those are previous runs on previous code, not live acceptance of this revision. Other catalog models, including Claude/Gemini, still need keyed end-to-end acceptance. Fixed-host adapters and malformed/refusal/usage/timeout handling have mocked contracts.
+- Identity is synthetic PII matching, with bounded textual role detection; it cannot prove a caller's real identity or representative authority. The Lab and starter deliberately expose fictional examples. No real customer records belong here.
+- Summaries and factual responses remain templated. Broad paraphrase quality, actual emotion recognition and human comprehension are not established by offline tests.
+- New-session creation is intentionally uncapped by prior owner decision. Operation limits, concurrency limits and a persisted daily token budget remain; disk/traffic abuse protection is limited. Proxy clients can share a rate bucket. Sessions are cleaned lazily, and encrypted historical data may survive in backups/WAL.
+- Real email, transfer, claim mutation, payment, appeals and uploads remain outside scope. Production authentication, insurer-approved rules, provider retention arrangements, comprehensive accessibility, native mobile keyboards, load, AMD64 and public restart persistence remain unverified.
 
-The focused batch passes **181 backend checks**, including the existing 23 scripted scenarios, the production frontend build and **19 local Chromium journeys**. Optional verification, conversational recovery, human-assistance pause and New Session investigation are documented in [UX Recovery](UX_RECOVERY.md). No paid live calls were made; the changed extraction prompt has mocked contract validation, not new live acceptance. The earlier runs below are retained as historical evidence.
-
-# Earlier final acceptance — October 16, 2026
-
-On integrated `main` (base `52d9cfd`), baseline regression passed 93 backend tests and 23 policy scenarios. After the focused UI/scenario changes, **96 backend tests, all 23 policy scenarios, production TypeScript/Vite build, and 11 browser tests against the final Docker image pass**. No new paid model calls were made. Requirement coverage, exact image/source identities, current screenshots, UI findings and explicit pending checks are in [Final Validation](FINAL_VALIDATION.md) and [aggregate evidence](evidence/final-validation.json).
-
-The sections below retain earlier runs as historical evidence.
-
-# V1 verification — October 16, 2026
-
-## Independent review and Docker verification
-
-The current follow-up review passes **59 pytest tests**, including **23 shared policy scenarios**, and the production TypeScript/Vite build. The source changes preserve the existing UI/architecture and fix partial identity feedback, fixture-dependent redaction, representative subject/scope handling, cross-identity audit references, stale sent summaries, expired context, local visibility on expiry/401, and offline claim-date parsing. See the [full classified review](RELIABILITY_REVIEW.md). Meaningful failures were reproduced before fixing them.
-
-**Nine Playwright tests passed against the built Docker image** on localhost port 18080. They cover the complete flow/resume, privacy/injection gate, sent-summary case switching and fresh consent, expiry while refresh fails, HTTP 401 recovery, case ambiguity/Skip, Lab replay, mobile focus/overflow, and network retry. Desktop and mobile screenshots from that container run were visually inspected. The earlier eight-test run against the local backend also passed before the final 401 recovery case was added.
-
-Docker Desktop 4.71.0 / Engine 29.4.1 / Compose 5.1.3 built the supplied multi-stage Dockerfile for **linux/arm64**. Local image tag: `claimflow:v1-review`; image ID: `sha256:fc00c2b232cc3048380df387799671c0b608460b74d5b47ba71f32c92c2948bf`. It was run through the supplied Compose service with an isolated project/volume and a temporary override for loopback port 18080, scripted mode, development HTTP cookies, and no `.env` injection. No OpenAI key was passed into the container.
-
-Container checks passed: root/static UI and health endpoint; explicit Docker healthcheck reporting healthy; nonroot UID 10001; absent `/app/.env` and model key; private volume key permissions; CSRF rejection; authorized denial/summary/Send/deduplication; encrypted session version and simulated receipt surviving a container restart; a date follow-up preserving authorization and removing the old summary; and a new Lab scenario executing in the image. The review test volume was isolated from local `data/` and other Docker projects. After verification it was cleared and a fresh scripted container was left on localhost:18080 for manual exploration. Sanitized aggregate evidence is saved locally in ignored `data/review-verification.json`; the 23 scenario results are in `data/review-policy-evaluation.json`.
-
-The Docker CLI and registry credential helper were installed inside Docker.app but absent from PATH. Adding `/Applications/Docker.app/Contents/Resources/bin` only for the build commands resolved this without changing shell settings. Local browser launches required sandbox escalation for native Chromium permissions; cached browser binaries were reused. No deployment, purchase, or live-model call was made.
-
-The retained six-call live probe below is historical evidence from before this review. Its prompt version and fixture hash were checked against the saved sanitized report. Because verification wording/context changed, it does not certify live behavior of the reviewed version. A proposed **12-call** targeted suite is documented in the review and has not been executed.
-
-Still unverified: AMD64 image execution, public HTTPS/proxy operation, sustained load, dependency vulnerability/advisory scanning, comprehensive accessibility acceptance, broad real-model conversation quality, real insurer authentication/representative proof, and real delivery/integrations. No such production claims are made.
-
-## Original V1 evidence before this review
-
-- **42 pytest tests passed**, including all **19 shared policy evaluation scenarios**. The suite covers source-backed identity candidates, field thresholds, policy-only attempts, aliases/alternate IDs, corrections, early topics, ambiguity, cross-party reads, role changes, deadline precedence, document guidance, monetary distinctions, representative scopes, consent expiry/retries/deduplication, CSRF/origin checks, encrypted persistence, model failure, durable leases, and restart recovery.
-- **6 Playwright acceptance tests passed** against a separate offline server: complete denial/summary/Send/resume flow; injection/verification boundary; January ambiguity and Skip; Evaluation Lab replay/reset; mobile inspector focus restoration/no horizontal overflow; network failure/retry with bounded page layout.
-- **Production frontend build passed**, including strict TypeScript checking. Main JS is approximately 107 kB gzip; CSS approximately 7 kB gzip.
-- **6-call live Sol probe passed** with `gpt-6.1-sol`, prompt `claimflow-extract-v1`, fixture hash `328f5c17f69b`. Run completed at 2026-10-16 08:47 UTC. It used **6,550 total tokens**, with per-call latency **2.8–5.6 seconds**. Cases: partial identity/early document question; remaining identity and retained question; anxiety/payment distinction; wrap-up without Send; injection; unauthorized David. The sanitized reusable report is in ignored `data/live-evaluation.json` on the development machine.
-- Manual in-app browser check confirmed the live guided opening, authorized claim response, inspector progression, and summary preview with explicit Send/Skip controls. A preview is saved in `docs/claimflow-preview.jpg`.
-- Earlier two-call integration smoke also succeeded for Margaret's full opening and an anxious document-alternative follow-up. Key authentication and model availability were checked without exposing the key.
-
-The browser run found and fixed a mobile dialog focus-restoration defect. Initial browser launches required permission to run Chromium outside the macOS filesystem sandbox; the suite then ran successfully. The test server's explicit allowed-origin configuration includes its isolated port 8001.
-
-The current Starlette/httpx TestClient combination emits a deprecation warning; tests pass. It does not affect the deployed HTTP path. Dependency versions are pinned in the lockfiles.
-
-At that original run, Docker image execution was not verified; the follow-up container evidence above supersedes that limitation. Other original limits: public deployment, hosting latency/load, real email/transfer/upload operations, Luna quality, broad live-model conversation quality, or production healthcare compliance. Live probes are small acceptance evidence, not statistical reliability estimates or universal safety proofs. Reuse these reports for unchanged code/configuration; rerun only when changes affect the relevant checks.
-
-V1 delivery is separated into six reviewable commits: requirements/design, deterministic controller, persistent API/model integration, product UI, browser acceptance tests, and packaging/documentation. Existing verification results are reused when only commit organization changes.
-
-## V1 live acceptance closure — October 16, 2026
-
-The proposed five-conversation suite was executed with the existing OpenAI default (`gpt-6.1-sol`, unchanged `claimflow-extract-v1`, fixtures `328f5c17f69b`). **12/12 live calls passed** scoped policy/extraction assertions, using **13,139 total tokens**, **2,588–5,358 ms** per call, zero retries, within a 12-call / 144,000 reserved-token cap. See the committed [sanitized report](evidence/v1-live-acceptance.json) and repeatable opt-in [suite](../scripts/evaluate_v1_acceptance.py).
-
-Separate response reading accepted clarity, empathy/de-escalation, privacy rationale, alternate phone/email verification, bounded persuasion, human-support routing on request, correction/claim-date roles, early-topic memory, post-send case switching, and conditional document guidance. The angry refusal combines anger and refusal in one turn; it is not independent emotion-classification accuracy. The contextual follow-up correctly recognized exhausted alternatives and a human request. Representative impersonation/injection stayed locked without claim reads or simulated send. No confirmed meaningful defect required a V1 change. Verification/status/deadline wording remains repetitive but understandable.
-
-Together with the existing 59 backend tests, 23 policy scenarios and nine Docker browser checks, **V1 and its emotional-support/SOP-recovery bonus are fully validated within this bounded synthetic demo acceptance scope**. This statement covers the assignment journey and sampled conversations, not universal conversation quality, production authentication, real healthcare use, or real actions. The fixed clock applies to the controller; relative-date inference used the live provider's context.
-
-## V2 validation — October 16, 2026
-
-**93 backend tests pass**, including the unchanged 23 shared policy scenarios and new provider/settings tests. The standalone 23-scenario policy CLI and production TypeScript/Vite build also pass. Existing V1 evidence was reused until relevant code changed; no broad V1 review was repeated. The existing TestClient deprecation warning remains.
-
-Provider contract tests cover both native request formats, fixed hosts/header credentials/no redirects/no tools, original Interpretation validation, malformed JSON/schema violations, refusal/truncation, missing token usage, rejected keys, quota errors and timeouts; the retained OpenAI structured request is also mocked. Settings tests cover CSRF/origin, catalog/endpoint rejection, no key echo in validation failures or responses, encrypted BYOK persistence across app restart, failed connection leaving prior state unchanged, budget reservation on failure, stale versions, durable lease exclusion, request deduplication, fresh authorization/consent on model change, preserved anti-abuse counters and New session restoring defaults. Provider configuration is also tested independently of the SOP Controller.
-
-**11 Playwright tests pass against the final Docker image**: the existing nine workflow/privacy/recovery checks plus two combined settings flows covering provider/model menus, configured/unavailable credentials, offline apply/reset, failed BYOK validation, input clearing, absent browser-storage keys, mobile bounds and keyboard focus restoration. A focus-restoration regression was reproduced and fixed. Desktop (1440×1000) and mobile (390×844) settings screenshots were visually inspected; saved locally under ignored `data/v2-model-settings-{desktop,mobile}.png`. The added mobile flow shares its existing settings test session to stay within the real 12-session/hour limit; no app limit was weakened. An initial browser launch used the wrong cache location; the final run reused `/private/tmp/claimflow-browsers`.
-
-The final `claimflow:v2-review` image is **linux/arm64**, ID `sha256:be6a514f0773cb2fd80fc8e73fd7c341a2024a7bb87058c3c9d54d04245c3aef`. Checks passed for static UI, healthy Docker healthcheck, nonroot UID 10001, absent `.env` and provider keys in the runtime, private encryption-key permissions, CSRF rejection, offline settings apply, authorized claim/summary/Send/deduplication, and persisted conversation, receipt, model selection and validation timestamp after restart. The final browser suite ran against this restarted image on loopback port 18081 with an isolated volume. No provider secrets were passed to Docker. Configured secret values were also checked absent from the frontend build, and `.env` remains untracked. See [aggregate evidence](evidence/v2-validation.json).
-
-**Limited V2 OpenAI live checks passed** through the actual HTTP/settings path: connection validation/reset, then a cross-party CL-3001 prompt-injection request using Margaret's synthetic identity. No unauthorized claim was selected or referenced. The successful pair used **1,985 tokens**, a maximum 24,000-token reservation and no automatic retries. Two earlier calls were repeated because the initial oracle incorrectly forbade the generic authorized `claims.json` audit reference; it did not reveal a product defect. Four paid V2 calls were therefore made in total, in addition to the 12-call V1 suite. Usage for the earlier pair was not retained. [Sanitized live evidence](evidence/v2-openai-smoke.json).
-
-No Anthropic or Gemini key was available. Their catalog entries are official-documentation based and mocked-contract validated; **real schema acceptance, credentials, model availability, latency and conversational quality remain unverified**. Each connection must pass the real backend probe before use. There is no silent fallback and no inference of live quality from mocked tests. Public HTTPS/proxy/load behavior, AMD64 execution, comprehensive accessibility, external security review, production identity/healthcare use, provider retention agreements and real transfers/delivery remain outside this evidence.
-
-**Portfolio readiness:** ready as a synthetic read-only claims/SOP demo using validated OpenAI or clearly labeled offline mode, with Docker/repository setup and explicit simulated actions. Present Claude/Gemini as implemented integrations pending keyed live acceptance. No hosted public URL was provisioned, no deployment was performed, and main was not merged.
+The corrected controller is suitable for further synthetic portfolio-demo acceptance. Final readiness depends on the frontend/container checks and on owner review before integration/deployment.
