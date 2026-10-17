@@ -1,6 +1,6 @@
 # Playground space and key-status follow-up — October 17, 2026
 
-The production frontend build and **five focused local Chromium journeys pass** after adding the visible missing-key status, reversible heading collapse, left workflow rail and shorter composer. Desktop/mobile screenshots were visually inspected. See [UX Recovery](UX_RECOVERY.md) for coverage and limits. Backend code is unchanged; prior backend evidence is reused, with no new paid model calls or Docker rebuild.
+The production frontend build and **five focused local Chromium journeys pass** after adding the visible missing-key status, reversible heading collapse, left workflow rail and shorter composer. Desktop/mobile screenshots were visually inspected. See [UX Recovery](UX_RECOVERY.md) for coverage and limits. The subsequent top-space adjustment also passed the build and three affected browser journeys; expanded panels now align directly below app navigation, with a full-height rail and Back control. Backend code is unchanged; prior backend evidence is reused, with no new paid model calls or Docker rebuild.
 
 # Final small polish — October 17, 2026
 

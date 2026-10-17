@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import * as Tabs from '@radix-ui/react-tabs'
 import * as Dialog from '@radix-ui/react-dialog'
-import { ArrowDown, ArrowRight, ArrowUp, Check, CheckCheck, CheckCircle2, ChevronDown, ChevronRight, Circle, CircleAlert, Clock3, ClipboardList, FlaskConical, Info, Loader2, LockKeyhole, Mail, Maximize2, MessageSquare, Minimize2, PanelRightClose, PanelRightOpen, Plus, RotateCcw, ShieldCheck, X } from 'lucide-react'
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, CheckCheck, CheckCircle2, ChevronDown, ChevronRight, Circle, CircleAlert, Clock3, ClipboardList, FlaskConical, Info, Loader2, LockKeyhole, Mail, Maximize2, MessageSquare, PanelRightClose, PanelRightOpen, Plus, RotateCcw, ShieldCheck, X } from 'lucide-react'
 import { ModelSettings } from './ModelSettings'
 import { IdentityVerification } from './IdentityVerification'
 import { Button } from './components/Button'
@@ -122,6 +122,7 @@ export default function App() {
   const sessionEpoch = useRef(0)
   const expiredSummary = useRef<string | null>(null)
   const mobileInspectorButton = useRef<HTMLButtonElement>(null)
+  const playgroundToggle = useRef<HTMLButtonElement>(null)
   const settingsButton = useRef<HTMLButtonElement>(null)
   const resetButton = useRef<HTMLButtonElement>(null)
   const demoButton = useRef<HTMLButtonElement>(null)
@@ -258,18 +259,24 @@ export default function App() {
   const activePhase = PHASES.indexOf(session?.phase || 'VERIFY_ID')
   const selectedDemo = demo?.scenarios.find(s => s.id === demoChoice)
   const missingKey = session?.model_connection?.ready === false
+  function togglePlayground() {
+    setPlaygroundExpanded(!playgroundExpanded)
+    requestAnimationFrame(()=>playgroundToggle.current?.focus())
+  }
+  const sessionControls = <div className="heading-actions session-controls">{missingKey?<button className="model-label connection-missing" aria-label="Missing API key · Add key" title="Add your API key in Model settings" disabled={busy||!!pending} onClick={()=>setSettingsOpen(true)}><CircleAlert size={15}/>Missing API key</button>:<span className="model-label"><span className={'connection-dot '+(session?.model==='scripted'?'offline':'')}/>{session?.model === 'scripted' ? 'Offline · Scripted' : session?.model ? 'Live · ' + session.model : 'Connecting'}</span>}<Button ref={resetButton} variant="outline" size="sm" disabled={busy||initializing} onClick={()=>session?.messages.length||text.trim()?setResetOpen(true):void reset()}><Plus size={15}/>New session</Button></div>
 
   return <Tabs.Root value={tab} onValueChange={setTab} className="app-shell">
     <header className="app-header"><a href="/" aria-label="ClaimFlow home"><Brand/></a><span className="header-divider"/><span className="workspace-label">Claims support workspace</span>
       <Tabs.List className="main-tabs" aria-label="Workspace"><Tabs.Trigger value="playground"><MessageSquare size={16}/><span>Agent Playground</span></Tabs.Trigger><Tabs.Trigger value="lab"><FlaskConical size={16}/><span>Evaluation Lab</span></Tabs.Trigger></Tabs.List>
       <Button ref={settingsButton} variant="ghost" size="sm" disabled={!session||busy||!!pending} onClick={()=>setSettingsOpen(true)}>Model settings</Button><span className="demo-label"><span/>Synthetic data</span>
     </header>
-    <Tabs.Content value="playground" className="workspace" forceMount hidden={tab!=='playground'}>
-      <div className={'page-heading playground-heading '+(playgroundExpanded?'compact':'')}>{!playgroundExpanded&&<div><div className="eyebrow">AGENT PLAYGROUND</div><h1>Claims support</h1><p>A clear answer. A considered next step.</p></div>}<div className="heading-actions">{missingKey?<button className="model-label connection-missing" aria-label="Missing API key · Add key" title="Add your API key in Model settings" disabled={busy||!!pending} onClick={()=>setSettingsOpen(true)}><CircleAlert size={15}/>Missing API key</button>:<span className="model-label"><span className={'connection-dot '+(session?.model==='scripted'?'offline':'')}/>{session?.model === 'scripted' ? 'Offline · Scripted' : session?.model ? 'Live · ' + session.model : 'Connecting'}</span>}<Button ref={resetButton} variant="outline" size="sm" disabled={busy||initializing} onClick={()=>session?.messages.length||text.trim()?setResetOpen(true):void reset()}><Plus size={15}/>New session</Button></div></div>
+    <Tabs.Content value="playground" className={'workspace '+(playgroundExpanded?'playground-expanded':'')} forceMount hidden={tab!=='playground'}>
+      {!playgroundExpanded&&<div className="page-heading"><div><div className="eyebrow">AGENT PLAYGROUND</div><h1>Claims support</h1><p>A clear answer. A considered next step.</p></div>{sessionControls}</div>}
       <main className={'playground-layout '+(!inspector?'inspector-hidden':'')}>
-        <ol className="phase-strip" aria-label="Workflow progress">{PHASE_NAMES.map((name,n) => <li key={name} title={name} aria-current={n===activePhase?'step':undefined} className={n===activePhase?'current':n<activePhase?'complete':''}><span className="phase-number">{n<activePhase?<Check size={14}/>:String(n+1).padStart(2,'0')}</span><span className="phase-name">{name}</span></li>)}</ol>
+        <div className="workflow-rail">{playgroundExpanded&&<Button variant="ghost" size="sm" className="workflow-return" ref={playgroundToggle} aria-label="Restore playground" title="Show playground heading" onClick={togglePlayground}><ArrowLeft size={17}/><span>Back</span></Button>}
+        <ol className="phase-strip" aria-label="Workflow progress">{PHASE_NAMES.map((name,n) => <li key={name} title={name} aria-current={n===activePhase?'step':undefined} className={n===activePhase?'current':n<activePhase?'complete':''}><span className="phase-number">{n<activePhase?<Check size={14}/>:String(n+1).padStart(2,'0')}</span><span className="phase-name">{name}</span></li>)}</ol></div>
         <section className="chat-panel" aria-label="Claim support conversation">
-          <div className="panel-header"><span className="chat-agent-icon"><ShieldCheck size={18}/></span><div className="panel-heading"><h2>ClaimFlow assistant</h2><p>Guided by your insurer’s demo SOP</p></div><span className="private-note"><LockKeyhole size={12}/>Private session</span><Button variant="ghost" size="icon" aria-label={playgroundExpanded?'Restore playground':'Expand playground'} title={playgroundExpanded?'Show playground heading':'Hide playground heading for more conversation space'} aria-pressed={playgroundExpanded} onClick={()=>setPlaygroundExpanded(!playgroundExpanded)}>{playgroundExpanded?<Minimize2 size={18}/>:<Maximize2 size={18}/>}</Button><Button variant="ghost" size="icon" className="desktop-inspector-button" aria-label={inspector?'Hide workflow inspector':'Show workflow inspector'} aria-pressed={inspector} onClick={()=>setInspector(!inspector)}>{inspector?<PanelRightClose size={18}/>:<PanelRightOpen size={18}/>}</Button><Button variant="ghost" size="icon" className="mobile-inspector-button" ref={mobileInspectorButton} aria-label="Open workflow inspector" onClick={()=>setMobileInspector(true)}><PanelRightOpen size={18}/></Button></div>
+          <div className="panel-header"><span className="chat-agent-icon"><ShieldCheck size={18}/></span><div className="panel-heading"><h2>ClaimFlow assistant</h2><p>Guided by your insurer’s demo SOP</p></div><span className="private-note"><LockKeyhole size={12}/>Private session</span>{playgroundExpanded?sessionControls:<Button variant="ghost" size="icon" ref={playgroundToggle} aria-label="Expand playground" title="Use the space above for the conversation" onClick={togglePlayground}><Maximize2 size={18}/></Button>}<Button variant="ghost" size="icon" className="desktop-inspector-button" aria-label={inspector?'Hide workflow inspector':'Show workflow inspector'} aria-pressed={inspector} onClick={()=>setInspector(!inspector)}>{inspector?<PanelRightClose size={18}/>:<PanelRightOpen size={18}/>}</Button><Button variant="ghost" size="icon" className="mobile-inspector-button" ref={mobileInspectorButton} aria-label="Open workflow inspector" onClick={()=>setMobileInspector(true)}><PanelRightOpen size={18}/></Button></div>
           <div className="conversation" ref={scrollRef} onScroll={()=>{ const el=scrollRef.current!; const near=el.scrollHeight-el.scrollTop-el.clientHeight<90; setNearBottom(near); if(near)setNewMessage(false) }}>
             <div className="conversation-date">YOUR SUPPORT SESSION</div>
             {session?.messages.length===0&&<div className="starter-area"><div className="starter-label">EXPLORING THE DEMO?</div><button ref={demoButton} className="scenario-starter" onClick={showDemo}><span className="starter-icon"><ClipboardList size={18}/></span><span><strong>Try a guided scenario</strong><small>Standard claim, frustrated caller, or ambiguous claim</small></span><ArrowRight size={17}/></button><p className="micro muted"><Info size={12}/> Synthetic records only. Please don’t enter real personal information.</p></div>}
