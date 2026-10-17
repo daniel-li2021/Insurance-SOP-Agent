@@ -3,6 +3,7 @@ import * as Tabs from '@radix-ui/react-tabs'
 import * as Dialog from '@radix-ui/react-dialog'
 import { ArrowDown, ArrowRight, ArrowUp, Check, CheckCheck, CheckCircle2, ChevronDown, ChevronRight, Circle, CircleAlert, Clock3, ClipboardList, FlaskConical, Info, Loader2, LockKeyhole, Mail, MessageSquare, PanelRightClose, PanelRightOpen, Plus, RotateCcw, ShieldCheck, X } from 'lucide-react'
 import { ModelSettings } from './ModelSettings'
+import { IdentityVerification } from './IdentityVerification'
 import { Button } from './components/Button'
 import { api, ApiError, type Session, type Event, type Scenario, type Evaluation } from './api'
 
@@ -15,7 +16,7 @@ function initialize() {
   if (!bootstrap) bootstrap = api<Session>('/session').catch(error => {
     if (error instanceof ApiError && error.status === 401) return api<Session>('/session', {})
     throw error
-  })
+  }).finally(() => { bootstrap = undefined })
   return bootstrap
 }
 
@@ -90,6 +91,7 @@ function lockedSession(s: Session): Session {
 
 export default function App() {
   const [session, setSession] = useState<Session | null>(null)
+  const [initializing, setInitializing] = useState(true)
   const [tab, setTab] = useState('playground')
   const [text, setText] = useState('')
   const [busy, setBusy] = useState(false)
@@ -109,6 +111,8 @@ export default function App() {
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const sendingRef = useRef(false)
+  const sessionEpoch = useRef(0)
+  const expiredSummary = useRef<string | null>(null)
   const mobileInspectorButton = useRef<HTMLButtonElement>(null)
   const settingsButton = useRef<HTMLButtonElement>(null)
   const resetButton = useRef<HTMLButtonElement>(null)
@@ -117,13 +121,15 @@ export default function App() {
 
   useEffect(() => {
     let active = true
-    initialize().then(s => { if (active) setSession(s) }).catch(e => { if (active) { setError(e.message); bootstrap = undefined } })
+    const epoch = sessionEpoch.current
+    initialize().then(s => { if (active && epoch === sessionEpoch.current) setSession(s) }).catch(e => { if (active && epoch === sessionEpoch.current) setError(e.message) }).finally(() => { if (active) setInitializing(false) })
     return () => { active = false }
   }, [])
 
   const refresh = useCallback(async () => {
+    const epoch = sessionEpoch.current
     const latest = await api<Session>('/session')
-    setSession(latest)
+    if (epoch === sessionEpoch.current) setSession(latest)
     return latest
   }, [])
 
@@ -137,7 +143,10 @@ export default function App() {
         // Hide protected content at the deadline even when the server cannot be reached.
         setSession(current => current === session ? lockedSession(current) : current)
         void refresh().catch(() => {})
-      } else if (session.summary && ['offered','failed','timeout'].includes(session.summary.status) && now >= session.summary.expires_at) void refresh().catch(() => {})
+      } else if (session.summary && ['offered','failed','timeout'].includes(session.summary.status) && now >= session.summary.expires_at && expiredSummary.current !== session.summary.id) {
+        expiredSummary.current = session.summary.id
+        void refresh().catch(() => {})
+      }
     }
     tick()
     const interval = window.setInterval(tick, 1000)
@@ -153,7 +162,8 @@ export default function App() {
   }, [session?.messages.length, busy, session?.summary?.id, remaining > 0])
 
   async function execute(operation: Pending) {
-    if (!session || sendingRef.current) return
+    if (!session || sendingRef.current) return false
+    ++sessionEpoch.current
     sendingRef.current = true; setBusy(true); setError(''); setPending(operation)
     if (operation.text) setText('')
     try {
@@ -161,15 +171,27 @@ export default function App() {
       setSession(next); setPending(null)
       if (operation.text) setText('')
       inputRef.current?.focus()
+      return true
     } catch (e) {
       if (operation.text) setText(operation.text)
       setError(e instanceof Error ? e.message : 'Something went wrong. Please retry.')
       if (e instanceof ApiError && e.status === 401) {
         setSession(current => current && lockedSession(current)); setPending(null)
       }
-      if (e instanceof ApiError && e.status === 409) {
-        try { const latest = await refresh(); setPending({ ...operation, body: { ...operation.body, version: latest.version } }) } catch { /* Keep explicit recovery available. */ }
+      if (e instanceof ApiError && [403, 409].includes(e.status)) {
+        setSession(current => current && lockedSession(current))
+        try {
+          const latest = await refresh()
+          if (latest.csrf !== session.csrf) {
+            setPending(null)
+            setError('The session was replaced in another tab. The current session is now loaded. Review your draft before sending again.')
+          } else {
+            setPending({ ...operation, body: { ...operation.body, version: latest.version } })
+            setError('The current session has been synchronized. Review the conversation, then retry your action.')
+          }
+        } catch { setPending(null) /* Keep explicit recovery available. */ }
       }
+      return false
     } finally { setBusy(false); sendingRef.current = false }
   }
 
@@ -186,6 +208,7 @@ export default function App() {
   async function reset() {
     if (sendingRef.current) return
     sendingRef.current = true
+    ++sessionEpoch.current
     setBusy(true); setError('')
     try { setSession(await api<Session>('/session',{})); setText(''); setPending(null); setNearBottom(true); setResetOpen(false) }
     catch (e) { setError((e as Error).message) }
@@ -197,7 +220,17 @@ export default function App() {
     setDemoOpen(true)
     if (!demo) try { setDemo(await api('/demo-starter')) } catch(e) { setDemoError((e as Error).message) }
   }
-  const summary = pending?.text ? null : session?.summary
+  async function recover() {
+    if (sendingRef.current) return
+    sendingRef.current = true; setBusy(true)
+    ++sessionEpoch.current
+    try { setSession(await (session ? refresh() : initialize())); setPending(null); setError('') }
+    catch (e) {
+      setError((e as Error).message)
+      if (e instanceof ApiError && e.status === 401) setSession(current => current && lockedSession(current))
+    } finally { sendingRef.current = false; setBusy(false) }
+  }
+  const summary = pending?.text || session?.assistance_paused ? null : session?.summary
   const activePhase = PHASES.indexOf(session?.phase || 'VERIFY_ID')
   const selectedDemo = demo?.scenarios.find(s => s.id === demoChoice)
 
@@ -207,7 +240,7 @@ export default function App() {
       <Button ref={settingsButton} variant="ghost" size="sm" disabled={!session||busy||!!pending} onClick={()=>setSettingsOpen(true)}>Model settings</Button><span className="demo-label"><span/>Synthetic data</span>
     </header>
     <Tabs.Content value="playground" className="workspace" forceMount hidden={tab!=='playground'}>
-      <div className="page-heading"><div><div className="eyebrow">AGENT PLAYGROUND</div><h1>Claims support</h1><p>A clear answer. A considered next step.</p></div><div className="heading-actions"><span className="model-label"><span className={'connection-dot '+(session?.model==='scripted'?'offline':'')}/>{session?.model === 'scripted' ? 'Offline · Scripted' : session?.model ? 'Live · ' + session.model : 'Connecting'}</span><Button ref={resetButton} variant="outline" size="sm" disabled={!session||busy} onClick={()=>session?.messages.length||text.trim()?setResetOpen(true):void reset()}><Plus size={15}/>New session</Button></div></div>
+      <div className="page-heading"><div><div className="eyebrow">AGENT PLAYGROUND</div><h1>Claims support</h1><p>A clear answer. A considered next step.</p></div><div className="heading-actions"><span className="model-label"><span className={'connection-dot '+(session?.model==='scripted'?'offline':'')}/>{session?.model === 'scripted' ? 'Offline · Scripted' : session?.model ? 'Live · ' + session.model : 'Connecting'}</span><Button ref={resetButton} variant="outline" size="sm" disabled={busy||initializing} onClick={()=>session?.messages.length||text.trim()?setResetOpen(true):void reset()}><Plus size={15}/>New session</Button></div></div>
       <ol className="phase-strip" aria-label="Workflow progress">{PHASE_NAMES.map((name,n) => <li key={name} aria-current={n===activePhase?'step':undefined} className={n===activePhase?'current':n<activePhase?'complete':''}><span className="phase-number">{n<activePhase?<Check size={14}/>:String(n+1).padStart(2,'0')}</span><span>{name}</span>{n<3&&<ChevronRight className="phase-chevron" size={16}/>}</li>)}</ol>
       <main className={'playground-layout '+(!inspector?'inspector-hidden':'')}>
         <section className="chat-panel" aria-label="Claim support conversation">
@@ -219,7 +252,12 @@ export default function App() {
 
             {session?.messages.map(m => <div className={m.role==='user'?'user-message':'assistant-message'} key={m.id}>{m.role==='assistant'&&<Brand small/>}<div className="message-body"><span className="message-author">{m.role==='assistant'?'ClaimFlow':'You'}</span><div className="message-text">{m.text}</div>{m.references.length>0&&<details className="message-grounding"><summary><ShieldCheck size={12}/>Based on claim data · {m.references.length} {m.references.length===1?'source':'sources'}<ChevronDown size={12}/></summary><p className="micro muted">Supporting evidence · synthetic records and supplied guidance</p><ul>{m.references.map(r=><li key={r}>{evidenceLabel(r)}</li>)}</ul></details>}</div></div>)}
             {pending?.text&&!session?.messages.some(m=>m.id===pending.body.request_id)&&<div className="user-message pending-message"><div className="message-body"><div className="message-text">{pendingLabel(pending.text)}</div><span className={'delivery-status '+(error?'status-bad':'')} role="status">{error?<CircleAlert size={14}/>:<Clock3 size={14}/>} {error?'Not sent · Retry below':'Sending…'}</span></div></div>}
-            {session?.choices.length ? <div className="case-choices">{session.choices.map(c=><Button variant="outline" size="sm" key={c.case_id} disabled={busy} onClick={()=>void execute({path:'/turn',body:{text:`Please discuss ${c.case_id}. I want its status.`,version:session.version,request_id:crypto.randomUUID()},text:`Please discuss ${c.case_id}. I want its status.`})}><span className="mono">{c.case_id}</span> · {c.created_at.slice(0,4)}<ArrowRight size={13}/></Button>)}</div>:null}
+            {!session?.assistance_paused && session?.choices.length ? <div className="case-choices">{session.choices.map(c=><Button variant="outline" size="sm" key={c.case_id} disabled={busy} onClick={()=>void execute({path:'/turn',body:{text:`Please discuss ${c.case_id}. I want its status.`,version:session.version,request_id:crypto.randomUUID()},text:`Please discuss ${c.case_id}. I want its status.`})}><span className="mono">{c.case_id}</span> · {c.created_at.slice(0,4)}<ArrowRight size={13}/></Button>)}</div>:null}
+            {session?.assistance_paused && <section className="human-assistance" aria-label="Human assistance recommended">
+              <h3>Human assistance recommended</h3><p>Chat is paused. Contact your insurer’s official member support directly. This demo cannot transfer you, open a ticket, or place you in a queue.</p>
+              <Button variant="outline" size="sm" disabled={busy || !!pending} onClick={()=>session && void execute({path:'/turn',body:{text:'Return to chatbot',version:session.version,request_id:crypto.randomUUID()},text:'Return to chatbot'})}>Return to chatbot</Button>
+            </section>}
+            {session?.phase === 'VERIFY_ID' && !session.assistance_paused && <IdentityVerification key={session.csrf} disabled={busy || !!pending} onSubmit={fields=>execute({path:'/verify',body:{fields,version:session.version,request_id:crypto.randomUUID()}})}/>}
             {summary&&<div className="summary-preview"><div className="summary-header"><Mail size={17}/><h3>Claim discussion summary</h3><span>Simulation</span></div><div className="summary-content">{summary.cases?.length ? <>{summary.cases.map(c=><section className="summary-case" key={c.case_id} aria-label={'Summary for '+c.case_id}><div className="summary-claim"><span className="summary-label">Claim</span><h4>{c.case_id} · {c.case_type}</h4><p className="summary-status">{c.status==='Denied'?<CircleAlert size={17} className="status-bad"/>:<CheckCircle2 size={17}/>} {c.status}</p></div><dl>{c.denial_reason&&<div><dt>Reason for denial</dt><dd>{c.denial_reason}</dd></div>}<div><dt>Payment</dt><dd className="summary-payment">{c.payment}</dd><dd className="summary-note">Recorded finalized insurer payment. Allowed maximum: {c.allowed_maximum}, not a promised payout.</dd></div>{c.appeal_deadline&&<div><dt>Appeal deadline</dt><dd className={c.deadline_passed?'deadline-passed':''}>{c.appeal_deadline}{c.deadline_passed?' — Passed':''}</dd></div>}<div><dt>Next steps</dt><dd>{c.next_steps}</dd></div></dl><details className="summary-unresolved"><summary>Still unresolved</summary><p>{c.unresolved}</p></details></section>)}<p className="summary-boundary">This is a synthetic summary. No appeal, payment, document submission, or email delivery has occurred.</p></> : summary.text}</div><div className="summary-recipient"><span>To your on-file email</span><strong>{summary.recipient}</strong></div>
               {['offered','failed','timeout'].includes(summary.status)&&remaining>0?<><p className="micro muted consent-note">Choose explicitly. This offer expires in {Math.floor(remaining/60)}:{String(remaining%60).padStart(2,'0')}. No real email will be delivered.</p><div className="summary-actions"><Button disabled={busy} onClick={()=>action('send')}><Mail size={15}/>{summary.status==='offered'?'Send simulated email':'Retry simulation'}</Button><Button variant="outline" disabled={busy} onClick={()=>action('skip')}>Skip</Button></div></>:<div className="summary-result"><CheckCircle2 size={16}/>{summary.status==='simulated_sent'?'Simulation recorded. No email was delivered.':summary.status==='skipped'?'Skipped. No email was sent.':'Offer expired. No email action was taken.'}{summary.status==='simulated_sent'&&<span className="micro mono">Receipt {summary.receipt}</span>}{summary.status==='expired'&&<Button variant="outline" size="sm" disabled={busy} onClick={()=>action('preview')}>Review a fresh summary</Button>}</div>}
             </div>}
@@ -227,9 +265,9 @@ export default function App() {
           </div>
           {newMessage&&!nearBottom&&<button className="jump-bottom" onClick={()=>{ scrollRef.current?.scrollTo({top:scrollRef.current.scrollHeight,behavior:'smooth'});setNearBottom(true);setNewMessage(false) }}><ArrowDown size={13}/>New message</button>}
           <div className="composer-area">
-            {error&&<div className="error-banner" role="alert"><Info size={15}/><span>{error}</span>{pending?<Button variant="ghost" size="sm" disabled={busy} onClick={()=>void execute(pending)}>Retry</Button>:<Button variant="ghost" size="sm" disabled={busy} onClick={()=>void refresh().then(()=>setError('')).catch(()=>reset())}>Recover</Button>}<button aria-label="Dismiss error" onClick={()=>{setError('');setPending(null)}}><X size={15}/></button></div>}
-            {session?.verified&&session.case_id&&session.phase!=='POST_PROCESS'&&<div className="wrap-up"><span>Have what you need?</span><button disabled={busy} onClick={()=>action('preview')}>Review summary <ArrowRight size={13}/></button></div>}
-            <form className="composer" onSubmit={e=>{e.preventDefault();send()}}><label className="sr-only" htmlFor="message">Message ClaimFlow</label><textarea id="message" ref={inputRef} value={text} maxLength={4000} rows={2} disabled={!session||busy} placeholder={session?.messages.length?'Ask a follow-up question…':'Tell me about your claim…'} onChange={e=>{setText(e.target.value);if(pending){setPending(null);setError('')}}} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.nativeEvent.isComposing){e.preventDefault();send()}}}/><Button type="submit" size="icon" disabled={!session||busy||!!pending||!text.trim()} aria-label="Send message"><ArrowUp size={19}/></Button></form>
+            {error&&<div className="error-banner" role="alert"><Info size={15}/><span>{error}</span>{pending?<Button variant="ghost" size="sm" disabled={busy} onClick={()=>void execute(pending)}>Retry</Button>:<Button variant="ghost" size="sm" disabled={busy} onClick={()=>void recover()}>Recover</Button>}<button aria-label="Dismiss error" onClick={()=>{setError('');setPending(null)}}><X size={15}/></button></div>}
+            {session?.verified&&!session.assistance_paused&&session.case_id&&session.phase!=='POST_PROCESS'&&<div className="wrap-up"><span>Have what you need?</span><button disabled={busy} onClick={()=>action('preview')}>Review summary <ArrowRight size={13}/></button></div>}
+            <form className="composer" onSubmit={e=>{e.preventDefault();send()}}><label className="sr-only" htmlFor="message">Message ClaimFlow</label><textarea id="message" ref={inputRef} value={text} maxLength={4000} rows={2} disabled={!session||busy} placeholder={session?.assistance_paused?'Chat is paused · choose Return to chatbot to continue':session?.messages.length?'Ask a follow-up question…':'Tell me about your claim…'} onChange={e=>{setText(e.target.value);if(pending){setPending(null);setError('')}}} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.nativeEvent.isComposing){e.preventDefault();send()}}}/><Button type="submit" size="icon" disabled={!session||busy||!!pending||!text.trim()} aria-label="Send message"><ArrowUp size={19}/></Button></form>
             <div className="composer-footer"><span><LockKeyhole size={11}/>Identity details are redacted in saved conversation views.</span><span>Enter to send · Shift + Enter for a new line</span></div>
           </div>
         </section>
@@ -237,7 +275,7 @@ export default function App() {
       </main>
     </Tabs.Content>
     <Tabs.Content value="lab" className="workspace lab-workspace" forceMount hidden={tab!=='lab'}><EvaluationLab session={session}/></Tabs.Content>
-    {settingsOpen&&session&&<ModelSettings session={session} onApplied={s=>{setSession(s);setText('');setPending(null);setError('');setNearBottom(true);setNewMessage(false)}} onBusy={value=>{sendingRef.current=value;setBusy(value)}} onClose={()=>setSettingsOpen(false)} restoreFocus={()=>settingsButton.current?.focus()}/>}
+    {settingsOpen&&session&&<ModelSettings session={session} onApplied={s=>{setSession(s);setText('');setPending(null);setError('');setNearBottom(true);setNewMessage(false)}} onBusy={value=>{if(value)++sessionEpoch.current;sendingRef.current=value;setBusy(value)}} onClose={()=>setSettingsOpen(false)} restoreFocus={()=>settingsButton.current?.focus()}/>}
     <footer className="app-footer"><span><ShieldCheck size={12}/>A support demo with deterministic SOP controls</span><span>Synthetic identity matching · Simulated actions</span></footer>
     <Dialog.Root open={mobileInspector} onOpenChange={setMobileInspector}><Dialog.Portal><Dialog.Overlay className="dialog-overlay"/><Dialog.Content className="inspector-drawer" onCloseAutoFocus={event=>{event.preventDefault();mobileInspectorButton.current?.focus()}}><Dialog.Title className="sr-only">Workflow inspector</Dialog.Title><Dialog.Description className="sr-only">Verification, context, and sanitized policy decisions</Dialog.Description><Dialog.Close className="dialog-close" aria-label="Close workflow inspector"><X size={20}/></Dialog.Close>{session&&<Inspector session={session}/>}</Dialog.Content></Dialog.Portal></Dialog.Root>
     <Dialog.Root open={demoOpen} onOpenChange={setDemoOpen}><Dialog.Portal><Dialog.Overlay className="dialog-overlay"/><Dialog.Content className="demo-dialog" onCloseAutoFocus={e=>{e.preventDefault();(demoInserted.current?inputRef:demoButton).current?.focus()}}><span className="eyebrow">SYNTHETIC DEMO SCENARIO</span><Dialog.Title>Choose a demo scenario</Dialog.Title><Dialog.Description>Explore the complete workflow with a fictional policyholder. These details are supplied test data, not real credentials.</Dialog.Description>{demo&&selectedDemo?<><div className="demo-scenarios" role="group" aria-label="Demo scenarios">{demo.scenarios.map(s=><Button key={s.id} variant="outline" aria-pressed={demoChoice===s.id} onClick={()=>setDemoChoice(s.id)}>{s.name}</Button>)}</div><p className="demo-context">{selectedDemo.description}</p><div className="demo-opening">{selectedDemo.opening}</div>{demoChoice==='frustrated'&&<details className="demo-identity"><summary>Synthetic identity for the next message</summary><p>{demo.opening}</p></details>}<Button onClick={()=>{demoInserted.current=true;setText(selectedDemo.opening);setDemoOpen(false)}}>Use this opening message<ArrowRight size={16}/></Button></>:demoError?<div><p role="alert">{demoError}</p><Button onClick={showDemo}>Retry loading scenarios</Button></div>:<p role="status">Loading synthetic scenario…</p>}<Dialog.Close className="dialog-close" aria-label="Close demo scenario"><X size={20}/></Dialog.Close></Dialog.Content></Dialog.Portal></Dialog.Root>

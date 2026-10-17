@@ -1,0 +1,157 @@
+import { test, expect, type Page } from '@playwright/test'
+
+async function message(page: Page, text: string) {
+  const input = page.getByRole('textbox', { name: 'Message ClaimFlow' })
+  await expect(input).toBeEnabled()
+  await input.fill(text)
+  await page.getByRole('button', { name: 'Send message', exact: true }).click()
+  await expect(input).toBeEnabled()
+}
+async function openForm(page: Page) {
+  await page.locator('.verification-form>summary').click()
+  await page.getByRole('textbox', { name: 'Full name', exact: true }).fill('Margaret Chen')
+  await page.getByRole('textbox', { name: 'Date of birth', exact: true }).fill('1985-03-15')
+}
+
+test('optional form: editable visible details, private mismatch, correction, early claim context', async ({ page }) => {
+  await page.goto('/')
+  await message(page, 'Why was my denied January healthcare claim denied?')
+  await openForm(page)
+  await page.getByRole('textbox', { name: 'Phone', exact: true }).fill('2025550000')
+  await page.getByRole('button', { name: 'Submit verification details' }).click()
+  await expect(page.locator('.message-text').last()).toContainText('Verification is still incomplete')
+  await expect(page.locator('.inspector-panel')).toContainText('Partial results stay private')
+  await expect(page.locator('.verification-form')).not.toHaveAttribute('open')
+  await page.locator('.verification-form>summary').click()
+  await expect(page.getByRole('textbox', { name: 'Full name', exact: true })).toHaveValue('')
+  await page.getByRole('textbox', { name: 'Full name', exact: true }).fill('Margaret Chen')
+  await page.getByRole('textbox', { name: 'Date of birth', exact: true }).fill('1985-03-15')
+  await page.getByRole('combobox', { name: 'Identity field 3' }).selectOption('email')
+  await expect(page.getByRole('combobox', { name: 'Identity field 2' }).locator('option[value="email"]')).toHaveCount(0)
+  await page.getByRole('textbox', { name: 'Email', exact: true }).fill('margaret@email.com')
+  // Correct the previously supplied phone too; stale contradictory fields must still block access.
+  await page.getByRole('button', { name: 'Submit verification details' }).click()
+  await expect(page.locator('.verification-form')).toBeVisible()
+  await message(page, 'Actually my phone is +16505212836.')
+  await expect(page.getByRole('button', { name: 'Review summary', exact: true })).toBeVisible()
+  expect((await page.locator('.user-message').allTextContents()).join(' ')).not.toContain('1985-03-15')
+})
+
+test('SSN alternative form and human pause recover without repeated instructions', async ({ page }) => {
+  await page.goto('/')
+  await message(page, 'My denied healthcare claim from January. I do not want to share SSN.')
+  await expect(page.locator('.message-text').last()).toContainText('Full name + DOB')
+  await openForm(page)
+  await page.getByRole('combobox', { name: 'Identity field 3' }).selectOption('id_last4')
+  await page.getByLabel('SSN / approved ID last four', { exact: true }).fill('4472')
+  await page.getByRole('button', { name: 'Submit verification details' }).click()
+  await expect(page.getByRole('button', { name: 'Review summary', exact: true })).toBeVisible()
+  await message(page, 'transfer me')
+  await expect(page.getByRole('region', { name: 'Human assistance recommended' })).toBeVisible()
+  const count = await page.locator('.assistant-message').count()
+  for (const text of ['yes', 'okay transfer me', 'I do not want AI']) await message(page, text)
+  await expect(page.locator('.assistant-message')).toHaveCount(count)
+  await expect(page.getByRole('button', { name: 'Review summary', exact: true })).toHaveCount(0)
+  await page.reload()
+  await page.getByRole('button', { name: 'Return to chatbot', exact: true }).click()
+  await expect(page.getByRole('region', { name: 'Human assistance recommended' })).toHaveCount(0)
+  await message(page, 'What is the payment?')
+  await expect(page.locator('.message-text').last()).toContainText('$1,450.00')
+})
+
+test('another tab reset recovers stale CSRF without refreshing or replaying a draft', async ({ page, context }) => {
+  await page.goto('/')
+  await message(page, 'My name is Margaret Chen, DOB 1985-03-15, SSN last four 4472. My denied healthcare claim from January.')
+  const other = await context.newPage()
+  await other.goto('/')
+  await other.getByRole('button', { name: 'New session', exact: true }).click()
+  await other.getByRole('button', { name: 'Start new session', exact: true }).click()
+  await expect(other.locator('.user-message')).toHaveCount(0)
+  await message(page, 'What is the payment?')
+  await expect(page.getByRole('alert')).toContainText('replaced in another tab')
+  await expect(page.locator('.user-message')).toHaveCount(0)
+  await expect(page.getByRole('textbox', { name: 'Message ClaimFlow' })).toHaveValue('What is the payment?')
+  await expect(page.locator('.inspector-panel')).toContainText('Locked until verified')
+  await page.getByRole('button', { name: 'Send message', exact: true }).click()
+  await expect(page.locator('.user-message')).toHaveCount(1)
+  await expect(page.locator('.message-text').last()).toContainText('Verification is not complete')
+})
+
+test('same session changed in another tab requires one explicit safe retry', async ({ page, context }) => {
+  await page.goto('/')
+  await expect(page.getByRole('textbox', { name: 'Message ClaimFlow' })).toBeEnabled()
+  const other = await context.newPage()
+  await other.goto('/')
+  await message(other, 'Hello')
+  await message(page, 'My name is Margaret Chen.')
+  await expect(page.getByRole('alert')).toContainText('synchronized')
+  await page.getByRole('button', { name: 'Retry', exact: true }).click()
+  await expect(page.getByRole('alert')).toHaveCount(0)
+  await expect(page.locator('.user-message')).toHaveCount(2)
+  expect((await page.locator('.user-message').allTextContents()).join(' ')).not.toContain('Margaret Chen')
+})
+
+test('rate-limited reset preserves conversation and Recover does not create another session', async ({ page }) => {
+  await page.goto('/')
+  await message(page, 'Hello')
+  let creations = 0
+  await page.route('**/api/session', async route => {
+    if (route.request().method() !== 'POST') return route.continue()
+    creations++
+    await route.fulfill({ status: 429, json: { detail: 'New session limit reached (12 per hour). Try again in 20 minutes. Refreshing will not reset this limit. Your current session has been kept.' } })
+  })
+  await page.getByRole('button', { name: 'New session', exact: true }).click()
+  await page.getByRole('button', { name: 'Start new session', exact: true }).click()
+  await expect(page.getByRole('dialog').getByRole('alert')).toContainText('12 per hour')
+  await page.getByRole('button', { name: 'Keep conversation', exact: true }).click()
+  await expect(page.locator('.user-message')).toHaveCount(1)
+  await page.getByRole('button', { name: 'Recover', exact: true }).click()
+  await expect(page.getByRole('alert')).toHaveCount(0)
+  expect(creations).toBe(1)
+})
+
+test('failed initialization can start a session without a page refresh', async ({ page }) => {
+  let release!: () => void
+  const gate = new Promise<void>(resolve => { release = resolve })
+  await page.route('**/api/session', async route => {
+    await gate
+    await route.fulfill({ status: 503, json: { detail: 'Session loading unavailable. Retry.' } })
+    await page.unroute('**/api/session')
+  })
+  await page.goto('/')
+  await expect(page.getByRole('button', { name: 'New session', exact: true })).toBeDisabled()
+  release()
+  await expect(page.getByRole('alert')).toContainText('unavailable')
+  await page.getByRole('button', { name: 'New session', exact: true }).click()
+  await expect(page.getByRole('textbox', { name: 'Message ClaimFlow' })).toBeEnabled()
+  await expect(page.getByRole('alert')).toHaveCount(0)
+})
+
+test('summary expiry makes one synchronization attempt when the network is unavailable', async ({ page }) => {
+  await page.clock.install()
+  await page.goto('/')
+  await message(page, 'My name is Margaret Chen, DOB 1985-03-15, SSN last four 4472. My denied healthcare claim from January.')
+  await page.getByRole('button', { name: 'Review summary', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Send simulated email', exact: true })).toBeVisible()
+  let refreshes = 0
+  await page.route('**/api/session', async route => { refreshes++; await route.abort() })
+  await page.clock.fastForward(601_000)
+  await expect(page.getByRole('button', { name: 'Send simulated email', exact: true })).toHaveCount(0)
+  await expect.poll(() => refreshes).toBe(1)
+  await page.clock.fastForward(30_000)
+  expect(refreshes).toBe(1)
+})
+
+test('mobile form remains inside the scrolling conversation', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/')
+  await openForm(page)
+  await page.getByRole('combobox', { name: 'Identity field 3' }).selectOption('email')
+  await page.getByRole('textbox', { name: 'Email', exact: true }).fill('margaret@email.com')
+  await page.getByRole('button', { name: 'Submit verification details' }).scrollIntoViewIfNeeded()
+  await expect(page.getByRole('button', { name: 'Submit verification details' })).toBeInViewport()
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+  await page.screenshot({ path: '../data/ux-recovery-mobile.png', fullPage: true })
+  await page.getByRole('button', { name: 'Submit verification details' }).click()
+  await expect(page.locator('.verification-form')).toHaveCount(0)
+})

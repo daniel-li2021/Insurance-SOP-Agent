@@ -1,4 +1,8 @@
-# Current final acceptance — October 16, 2026
+# Current verification and recovery — October 17, 2026
+
+The focused batch passes **181 backend checks**, including the existing 23 scripted scenarios, the production frontend build and **19 local Chromium journeys**. Optional verification, conversational recovery, human-assistance pause and New Session investigation are documented in [UX Recovery](UX_RECOVERY.md). No paid live calls were made; the changed extraction prompt has mocked contract validation, not new live acceptance. The earlier runs below are retained as historical evidence.
+
+# Earlier final acceptance — October 16, 2026
 
 On integrated `main` (base `52d9cfd`), baseline regression passed 93 backend tests and 23 policy scenarios. After the focused UI/scenario changes, **96 backend tests, all 23 policy scenarios, production TypeScript/Vite build, and 11 browser tests against the final Docker image pass**. No new paid model calls were made. Requirement coverage, exact image/source identities, current screenshots, UI findings and explicit pending checks are in [Final Validation](FINAL_VALIDATION.md) and [aggregate evidence](evidence/final-validation.json).
 

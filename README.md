@@ -26,6 +26,8 @@ Open [localhost:8000](http://localhost:8000). Choose **Try a guided scenario** f
 
 The composer clears immediately, shows a pending message and checking indicator, and restores the draft on failure. Pending identity-bearing messages stay hidden until authoritative redaction; Retry reuses the same request ID. Responses focus on the current question. Summaries separate each claim and retain explicit Send/Skip. Playground sources use readable labels; the Inspector exposes concise decisions with expandable original references and complete timestamped history. The Evaluation Lab retains its full technical trail.
 
+During verification, **Prefer a form?** optionally accepts three distinct details, defaulting to Full name + DOB + Phone. Email and SSN / approved ID last four are alternatives; SSN is optional. Values are visible while editing and redacted in conversation views. The same backend rules must verify all supplied details against one policyholder. Human requests pause assistance with a clear simulation-only panel and **Return to chatbot**. New Session explains its existing **12/hour** limit; stale-tab security/version recovery synchronizes without automatically replaying an action. See [investigation, behavior and validation](docs/UX_RECOVERY.md).
+
 For live interpretation, set `OPENAI_API_KEY` and `MODEL_MODE=live` in the ignored `.env`; `OPENAI_MODEL=gpt-6.1-sol` is the tested default. The curated V2 catalog accepts only supported model IDs; arbitrary names and endpoints are rejected. In private development, if `MODEL_MODE` is omitted, a configured key selects live mode; without a key, the default is scripted. `APP_ENV=production` always starts offline and permits live access only through BYOK, regardless of private environment keys. `MODEL_MODE=scripted` never calls a model and has a deliberately limited parser. Mode is always visible. Restart the backend after configuration changes.
 
 For frontend development, run `npm --prefix frontend run dev` alongside the backend. The Vite server proxies `/api`; use port 5173 and keep its origin in `ALLOWED_ORIGINS`.
@@ -59,7 +61,7 @@ npx playwright install chromium
 npm run test:e2e
 ```
 
-The Lab and CLI execute the same 23 isolated scripted policy scenarios. They do not use the live model or change the Playground session. Pytest uses mock interpretation and a fixed clock. Playwright starts its own offline server on port 8001.
+The Lab and CLI execute the same 23 isolated scripted policy scenarios. They do not use the live model or change the Playground session. Pytest uses mock interpretation and a fixed clock. Playwright starts isolated offline servers on ports 8001 and 8002 for the workflow and recovery suites, preserving each server's real 12-session allowance. When targeting an external server with `CLAIMFLOW_E2E_URL`, run each file against a fresh isolated test instance rather than consuming a shared testing quota.
 
 Optional current conversation-relevance acceptance, **five paid API calls**, no retries:
 

@@ -8,7 +8,7 @@ The optional expandable form defaults to Full name + DOB + Phone. Any slot can b
 
 `POST /api/verify` accepts exactly three approved categories and uses the same CSRF/origin checks, session version, durable lease, HMAC deduplication, turn/attempt limits, identity merge, verification, representative authorization, redaction and audit path as chat. It does not call a model. Submission explicitly corrects only the selected categories; a previously supplied contradictory fourth category still blocks verification. Neither an HTTP success nor three filled inputs establishes authorization. Failure exposes no individual matches. Policy number cannot be selected.
 
-Successful submissions clear the form values; failed network requests retain values in memory for explicit retry. Conversation views continue to show placeholders such as `[name provided]`. This is intentional data minimization, not missing display data: the form is the editable view, and the saved transcript/Inspector do not become identity lookup surfaces. No identity values are put in browser storage.
+Completed submissions clear and collapse the form so the response stays visible; failed network requests retain values in memory for explicit retry. Conversation views continue to show placeholders such as `[name provided]`. This is intentional data minimization, not missing display data: the form is the editable view, and the saved transcript/Inspector do not become identity lookup surfaces. No identity values are put in browser storage.
 
 Refusing SSN now explains that Name + DOB + Phone or another approved three-field combination is accepted. Later incomplete attempts use a shorter reminder rather than repeating the entire field list. Ambiguous numeric DOB input receives a format clarification.
 
@@ -38,6 +38,10 @@ Existing **401** recovery locks protected content and permits an explicit new se
 
 ## Validation
 
-Backend milestone: **181 pytest checks passed**, including 20 focused UX/security cases and all 23 shared scripted policy scenarios (counted within pytest). One existing Starlette/httpx deprecation warning remains. The production TypeScript/Vite build passes. Browser validation and the final UI documentation are recorded in the next milestone.
+**181 pytest checks passed**, including 20 focused UX/security cases and all 23 shared scripted policy scenarios (counted within pytest). **19 Chromium browser journeys passed** on isolated offline servers: the 11 existing workflows plus eight recovery/form cases. The final form-collapse adjustment received a focused browser recheck. The production TypeScript/Vite build passes. The mobile expanded form was visually inspected at 390×844; it remains inside the scrolling conversation with the composer available. These are local developer checks, not public-hosting or comprehensive usability/accessibility acceptance.
+
+Browser checks include generic mismatch/correction, conflicting earlier fields, alternate fields, redaction, human-request repetition/persistence/voluntary return, stale-CSRF replacement, stale-version explicit retry, rate-limited reset preserving context, recovery after failed initialization, and a single summary-expiry synchronization attempt under network failure. Suites use independent temporary databases on ports 8001/8002 so the real 12/hour limit is tested without weakening it. Initial local Chromium launches needed filesystem-sandbox escalation; one form-label accessibility mismatch was corrected, and subsequent browser failures were test locator/timing issues. One existing Starlette/httpx deprecation warning remains.
+
+Reproduce with `.venv/bin/pytest`, `npm --prefix frontend run build`, then `cd frontend && npm run test:e2e` (reuse the installed Chromium cache if configured). No live model calls or Docker rebuild are required for these checks.
 
 Runtime sessions, screenshots/traces and keys stay in ignored local output directories. Original fixtures are unchanged. Public deployment, Docker rebuild, real insurer identity/representative proof, real transfer/delivery, human usability and comprehensive accessibility acceptance were not exercised in this batch.

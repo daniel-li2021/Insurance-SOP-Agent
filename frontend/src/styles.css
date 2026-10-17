@@ -142,3 +142,12 @@ h1,h2,h3,p { margin:0; }
 .inspector-evidence th,.inspector-evidence td { padding:8px 5px; border-bottom:1px solid var(--line); text-align:left; vertical-align:top; overflow-wrap:anywhere; font-size:var(--text-meta); }
 .inspector-evidence th:first-child { width:38%; }
 .message-grounding p { margin-top:8px; }
+.verification-form, .human-assistance { border:1px solid var(--line); border-radius:8px; padding:14px; margin:16px 0; font-size:var(--text-small); }
+.verification-form>summary { cursor:pointer; min-height:32px; font-weight:600; }
+.verification-form p, .human-assistance p { margin:8px 0 12px; line-height:1.6; }
+.verification-form form { display:grid; gap:12px; }
+.verification-row { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.4fr); gap:10px; align-items:start; }
+.verification-row label { display:grid; gap:5px; min-width:0; }
+.verification-row select, .verification-row input { width:100%; min-width:0; border:1px solid var(--line); border-radius:6px; padding:8px; font:inherit; font-size:16px; background:white; color:inherit; }
+.verification-row small { font-size:var(--text-meta); }
+@media(max-width:580px) { .verification-row { grid-template-columns:minmax(0,1fr); } }
