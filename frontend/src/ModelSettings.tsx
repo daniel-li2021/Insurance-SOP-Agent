@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
 import { Loader2, X } from 'lucide-react'
 import { Button } from './components/Button'
-import { api, type Session } from './api'
+import { api, ApiError, type Session } from './api'
 
 type Catalog = {
   default: { model: string };
@@ -10,8 +10,8 @@ type Catalog = {
   providers: { id: string; label: string; models: string[]; key_url: string; validation: string; model_details: Record<string,{ label: string; description: string; validation: string }> }[];
 }
 
-export function ModelSettings({ session, onApplied, onBusy, onClose, restoreFocus }: {
-  session: Session; onApplied: (session: Session) => void; onBusy: (busy: boolean) => void; onClose: () => void; restoreFocus: () => void;
+export function ModelSettings({ session, onApplied, onSynchronized, onBusy, onClose, restoreFocus }: {
+  session: Session; onApplied: (session: Session) => void; onSynchronized: (session: Session) => void; onBusy: (busy: boolean) => void; onClose: () => void; restoreFocus: () => void;
 }) {
   const [catalog, setCatalog] = useState<Catalog | null>(null)
   const [provider, setProvider] = useState('')
@@ -46,7 +46,19 @@ export function ModelSettings({ session, onApplied, onBusy, onClose, restoreFocu
         credential_source: provider === 'scripted' ? 'demo' : 'byok', retain_for_new_sessions: provider !== 'scripted' && retain, ...(provider !== 'scripted' ? { api_key: key } : {}),
       }, session.csrf)
       setCatalog(result.settings); onApplied(result.session); setSuccess(true)
-    } catch (e) { setError((e as Error).message) }
+    } catch (e) {
+      setError((e as Error).message)
+      if (e instanceof ApiError && [403, 409].includes(e.status)) {
+        try {
+          const latest = await api<Session>('/session')
+          if (latest.csrf !== session.csrf || latest.version !== session.version) {
+            onSynchronized(latest); setResetConfirmed(false)
+            setError('The session changed in another tab and has been synchronized. Review the current conversation before applying again. Re-enter your key if needed.')
+            setCatalog(await api<Catalog>('/settings'))
+          }
+        } catch { /* Leave the original error and explicit retry available. */ }
+      }
+    }
     finally { setBusy(false); onBusy(false) }
   }
   return <Dialog.Root open onOpenChange={open => { if (!open && !busy) onClose() }}><Dialog.Portal>

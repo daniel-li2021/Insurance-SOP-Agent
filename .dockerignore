@@ -9,3 +9,7 @@ __pycache__
 .pytest_cache
 test-results
 playwright-report
+docs/local
+docs/evidence
+docs/screenshots
+docs/*.md

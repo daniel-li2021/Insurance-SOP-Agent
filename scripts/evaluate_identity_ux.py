@@ -72,7 +72,8 @@ def evaluate():
 
 if __name__ == '__main__':
     result = evaluate()
-    output = Path('docs/evidence/identity-ux-live.json')
+    output = Path('data/identity-ux-live.json')
+    output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(result, indent=2) + '\n')
     print('Sanitized report:', output)
     raise SystemExit(0 if result['passed'] else 1)

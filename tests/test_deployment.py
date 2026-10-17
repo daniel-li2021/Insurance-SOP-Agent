@@ -25,7 +25,7 @@ def test_render_profile_and_restart(tmp_path, production):
     with TestClient(create_app(tmp_path, clock=lambda: NOW), base_url=origin) as client:
         assert client.get('/api/health').json()['mode'] == 'scripted'
         for path in ('/api/docs', '/openapi.json', '/.env', '/data/sessions.sqlite3',
-                     '/insurance_claims/fixtures/claims.json'):
+                     '/insurance_claims/fixtures/claims.json', '/docs/fixtures/claims.json'):
             assert client.get(path).status_code == 404
         response = client.post('/api/session', headers={'origin': origin})
         assert response.status_code == 200

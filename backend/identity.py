@@ -11,6 +11,15 @@ DATE = (rf'\b(?:\d{{4}}[-/.]\d{{1,2}}[-/.]\d{{1,2}}|\d{{1,2}}[-/.]\d{{1,2}}[-/.]
 PHONE = r'(?<![\d\w])(?:\+?\d{1,3}[ .-]?)?\(?\d{3}\)?[ .-]?\d{3}[ .-]?\d{4}(?![\d\w])'
 
 
+def representative_signal(text: str) -> bool:
+    return bool(re.search(
+        r'on behalf|my (?:mother|mom|father|dad|wife|husband|spouse|partner|daughter|son|sister|brother|aunt|uncle|grandmother|grandfather)\b|'
+        r'her son|as (?:a |her )?representative|i.m david|'
+        r'\b(?:helping|assisting|calling for) (?:my|a|the) (?:friend|client|patient)\b|'
+        r'\b(?:her|his|their) (?:(?:full )?name\s*(?:is|:)|dob\b|date of birth\b)',
+        text, re.I))
+
+
 def normalize(field: str, value: str) -> str:
     value = value.strip()
     if field == 'dob':

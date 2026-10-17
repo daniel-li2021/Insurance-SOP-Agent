@@ -4,7 +4,7 @@ import re
 import uuid
 from datetime import datetime, timezone
 from .fixtures import Claim, Fixtures
-from .identity import DATE, extract_identity, merge_identity, normalize, supported, verify
+from .identity import DATE, extract_identity, merge_identity, normalize, representative_signal, supported, verify
 from .models import Interpretation, Message, Session, Summary, SummaryCase
 
 AUTH_SECONDS = 900
@@ -48,6 +48,7 @@ class Controller:
             s.context_notes = []
             s.pending_topics = []
             s.pending_documents = []
+            s.pending_alternatives_exhausted = False
             s.hints = {}
             s.intent = 'none'
             s.unresolved = []
@@ -81,8 +82,22 @@ class Controller:
         proposed_fields = {c.field for c in i.identity}
         i = i.model_copy(update={'identity': i.identity + [c for c in literal if c.field not in proposed_fields]})
         s.turns += 1
+        # Caller-role changes must revoke incompatible access even when chat is paused.
+        rep_signal = representative_signal(text)
+        rep_signal |= any(c.subject == 'policyholder' and supported(c, text) for c in i.identity)
+        if i.representative or rep_signal:
+            s.representative = True
+            self.expire(s, now)
         # Pause before identity/claim/consent processing; acknowledgments cannot restart it.
         human_request = i.action == 'human' or self.wants_human(text)
+        if (human_request or s.assistance_paused) and s.party_id and i.identity:
+            # Pausing cannot preserve access after a conflicting caller identity.
+            proposed = s.model_copy(deep=True)
+            merge_identity(proposed, i.identity, text, message_id, i.correction)
+            party, _ = verify(proposed, self.f)
+            if party != s.party_id:
+                s.auth_until = 0
+                self.expire(s, now)
         if human_request or s.assistance_paused:
             s.messages.append(Message(id=message_id, role='user', text=self.redact(text, i), protected=bool(s.party_id)))
             if s.assistance_paused and not human_request and text.strip(' .!').casefold() in (
@@ -105,11 +120,6 @@ class Controller:
             s.event('EXPLICIT_DECISION_REQUIRED', 'A chat acknowledgment is not email consent.', now)
             return self.reply(s, '', 'Please use Send simulated email or Skip on the current preview. Your chat message alone does not authorize a send.', now)
         was_authorized = bool(s.party_id)
-        # Caller role is sticky. A model omission cannot turn a relative into a policyholder.
-        rep_signal = bool(re.search(r'on behalf|my (?:mother|mom|father|dad|wife|husband|spouse|partner|daughter|son|sister|brother|aunt|uncle|grandmother|grandfather)\b|her son|as (?:a |her )?representative|i.m david', text, re.I))
-        rep_signal |= any(c.subject == 'policyholder' and supported(c, text) for c in i.identity)
-        if i.representative or rep_signal:
-            s.representative = True
         s.summary = None
         if s.phase == 'POST_PROCESS':
             s.transition('PROCESS_CASE' if s.case_id else 'RESOLVE_INTENT', now)
@@ -130,6 +140,7 @@ class Controller:
                 s.context_notes = []
                 s.pending_topics = []
                 s.pending_documents = []
+                s.pending_alternatives_exhausted = False
                 s.hints = {}
                 s.transition('VERIFY_ID', now)
                 s.event('IDENTITY_RECHECK', 'Changed identity requires renewed authorization.', now)
@@ -148,13 +159,15 @@ class Controller:
             s.discussed = []
             s.pending_topics = []
             s.pending_documents = []
+            s.pending_alternatives_exhausted = False
             s.context_notes = []
             if s.party_id: s.transition('RESOLVE_INTENT', now)
         # A payment intent is itself a question, even if the model omits topics.
         requested_topics = i.topics or (['payment'] if i.intent == 'payment_question' else [])
-        if s.phase in ('VERIFY_ID', 'RESOLVE_INTENT') and requested_topics:
+        if s.phase in ('VERIFY_ID', 'RESOLVE_INTENT'):
             s.pending_topics = list(dict.fromkeys(s.pending_topics + requested_topics))
             s.pending_documents = list(dict.fromkeys(s.pending_documents + i.documents))
+            s.pending_alternatives_exhausted |= i.alternatives_exhausted
         if i.emotion != 'neutral' or i.alternatives_exhausted or i.topics:
             s.context_notes.append({'message_id':message_id, 'emotion':i.emotion,
                                     'topics':i.topics,'documents':i.documents,'alternatives_exhausted':i.alternatives_exhausted,
@@ -242,6 +255,7 @@ class Controller:
                 msg = 'Which claim would you like to discuss, and what would you like to know?\n\n' + '\n'.join(f'{c.case_id} · {c.case_type} · created {c.created_at} · {c.status}' for c in matches)
                 return self.reply(s, prefix, msg, now, ['claims.json'])
             s.case_id = matches[0].case_id
+            s.discussed = list(s.discussed_by_case.get(s.case_id, []))
             s.choices = []
             s.event('CASE_RESOLVED', 'Caller context matched one authorized case.', now, [f'claims.json#{s.case_id}'])
             s.transition('PROCESS_CASE', now)
@@ -256,15 +270,16 @@ class Controller:
         if text.strip().casefold() in ('yes', 'send', 'send it', 'skip'):
             return self.reply(s, prefix, 'To wrap up, choose “Review summary.” You can then explicitly choose Send simulated email or Skip. A chat message alone does not authorize sending.', now)
         topics = list(dict.fromkeys(requested_topics + s.pending_topics)) or ['status']
-        exhausted = i.alternatives_exhausted
+        exhausted = i.alternatives_exhausted or s.pending_alternatives_exhausted
         body, refs = self.explain(claim, topics, now, exhausted,
                                   documents=i.documents or s.pending_documents,
                                   first=not s.discussed, detailed=i.detailed)
         s.pending_topics = []
         s.pending_documents = []
+        s.pending_alternatives_exhausted = False
         s.discussed = list(dict.fromkeys(s.discussed + topics))
         s.discussed_by_case[s.case_id] = list(s.discussed)
-        if i.alternatives_exhausted or (claim.appeal_deadline and claim.appeal_deadline < datetime.fromtimestamp(now, timezone.utc).date()):
+        if exhausted or (claim.appeal_deadline and claim.appeal_deadline < datetime.fromtimestamp(now, timezone.utc).date()):
             s.human_offered = True
         s.event('GROUNDED_RESPONSE', 'Response rendered from authorized facts and supplied guidance.', now, refs)
         return self.reply(s, prefix, body, now, refs)
@@ -338,7 +353,7 @@ class Controller:
     def preview(self, s: Session, c: Claim, prefix: str, now: float):
         s.transition('POST_PROCESS', now)
         cases, refs = [], []
-        for case_id in (s.discussed_by_case or {c.case_id: s.discussed}):
+        for case_id in dict.fromkeys([*s.discussed_by_case, c.case_id]):
             claim = self.f.claim(s, case_id, now)
             if claim:
                 expired = bool(claim.appeal_deadline and claim.appeal_deadline < datetime.fromtimestamp(now, timezone.utc).date())

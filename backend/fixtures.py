@@ -44,7 +44,7 @@ class Claim(BaseModel):
 
 
 class Fixtures:
-    def __init__(self, directory: Path = ROOT / 'insurance_claims/fixtures'):
+    def __init__(self, directory: Path = ROOT / 'docs/fixtures'):
         raw = {p.stem: p.read_bytes() for p in sorted(directory.glob('*.json'))}
         required = {'policyholders', 'claims', 'claim_schema', 'representatives', 'consent_scenarios', 'required_document_guideline'}
         if set(raw) != required:
