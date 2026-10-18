@@ -1,6 +1,23 @@
 # ClaimFlow review and validation
 
-Reviewed October 17, 2026 against GitHub main `9bb61be124aca32210bc7549f6b18b708d486b07`, confirmed through the connected GitHub API. The review branch contains focused corrections; main and the hosted service are unchanged. Three independent reviewers covered authorization, conversation/Bonus behavior, and frontend/session reliability; the lead reproduced important security cases and integrated the changes.
+## Portfolio UI refresh — October 17, 2026
+
+Built from local `main` commit `999722b` on `codex/claimflow-portfolio-polish`. Changes are limited to Playground presentation, deterministic draft suggestions, browser regressions, screenshots, and documentation. Backend code, fixtures, API contracts, provider configuration, authorization, and summary actions are unchanged. No deployment or paid model call was made.
+
+- TypeScript/Vite production build passed; current JS asset: `index-CRUVKRpw.js`.
+- **37/37 Chromium journeys passed in one isolated offline run**, including all 34 existing journeys and three added journeys. The new checks cover draft-only suggestions without turn/action/verification requests, state-specific prompts, explicit summary consent, paused assistance, scenario focus restoration, and preservation of chat/form drafts across layout modes.
+- Layout checks cover 1440×900, 1280×720, 390×844, 320×568, and 720×450. Expanded mode increases the message viewport by more than 40 CSS pixels at each size; scenario/form triggers and the composer remain in view. Open forms are bounded so the composer stays visible on short screens. Existing responsive navigation, privacy, expiry, stale-session, retry, Lab, and consent checks also passed.
+- The first browser attempt could not launch Chromium inside the filesystem sandbox; the successful runs used the installed Chromium outside that sandbox with temporary synthetic stores and offline mode. Intermediate assertions caught initial-session request capture, the expected disabled composer after a human request, and compact-layout/form overflow issues; those were corrected before the passing run.
+- Standard/expanded desktop screenshots below were captured at 1440×900 using synthetic fixtures. Mobile captures were visually reviewed. In-app browser interaction confirmed that a denial suggestion only fills/focuses the draft; no console errors were recorded in that check. The supplied mockup was treated as direction, retaining existing fonts, colors, icons, source facts, and controls. See [visual comparison](../design-qa.md).
+- Reused the **263-case backend / 23-scenario policy baseline** below because backend code and configuration did not change. Those checks were not rerun for this presentation-only revision. Historical Docker and live-model results retain their original scope.
+
+![Expanded Playground with synthetic claim context and draft suggestions](screenshots/playground-expanded.png)
+
+The public demo uses manual deployment and may lag this revision. New local screenshots and browser checks are not evidence of a public release or live-model acceptance.
+
+## Earlier focused review
+
+Reviewed October 17, 2026 against GitHub main `9bb61be124aca32210bc7549f6b18b708d486b07`, confirmed through the connected GitHub API at that time. That review produced focused corrections subsequently merged into the current baseline. Three independent reviewers covered authorization, conversation/Bonus behavior, and frontend/session reliability; the lead reproduced important security cases and integrated the changes. The evidence below describes that earlier review, rather than a new backend or deployment run.
 
 ## Assignment and Bonus coverage
 
@@ -71,6 +88,6 @@ Use an installed Chromium path appropriate to your machine (or `npx playwright i
 
 **Ready for owner review as a synthetic portfolio demo**, with the Assignment and Bonus covered within the boundaries above. No main merge, hosted deployment, production change or new paid model call occurred. Live conversational acceptance of this revision is still pending.
 
-Public documentation is reduced to README, the original assignment, the main plan, architecture, usage, deployment, this review and third-party notices. All six supplied JSON fixtures moved to `docs/fixtures/` without byte changes; the original assignment moved to `docs/ASSIGNMENT.md` unchanged. Backend, Docker and private-path tests use the new location. Four selected screenshots remain tracked. Superseded proposals, intermediate implementation notes, raw historical receipts and extra images are untracked and ignored while remaining local; previous commits retain their history. The optional identity-UX script now writes to ignored `data/` and creates its output directory on a fresh checkout.
+Public documentation is reduced to README, the original assignment, the main plan, architecture, usage, deployment, this review and third-party notices. All six supplied JSON fixtures moved to `docs/fixtures/` without byte changes; the original assignment moved to `docs/ASSIGNMENT.md` unchanged. Backend, Docker and private-path tests use the new location. Four selected screenshots were retained in that documentation pass; the portfolio UI refresh adds two current Playground captures. Superseded proposals, intermediate implementation notes, raw historical receipts and extra images are untracked and ignored while remaining local; previous commits retain their history. The optional identity-UX script now writes to ignored `data/` and creates its output directory on a fresh checkout.
 
 P3 cosmetic refinements, broad response rewriting and new infrastructure were intentionally deferred. Existing limits are retained; this acceptance is not a production security certification.

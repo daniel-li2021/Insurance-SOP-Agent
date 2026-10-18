@@ -1,4 +1,5 @@
-import { useRef, useState } from 'react'
+import { useState, type RefObject } from 'react'
+import { ChevronDown, ClipboardList } from 'lucide-react'
 import { api } from './api'
 import { Button } from './components/Button'
 
@@ -12,17 +13,17 @@ const FIELDS = {
 type Field = keyof typeof FIELDS
 export type VerificationValue = { field: Field; value: string; identifier_type?: string }
 
-export function IdentityVerification({ disabled, onSubmit }: {
-  disabled: boolean; onSubmit: (fields: VerificationValue[], displayText: string) => Promise<boolean>
+export function IdentityVerification({ disabled, onSubmit, panelRef }: {
+  disabled: boolean; onSubmit: (fields: VerificationValue[], displayText: string) => Promise<boolean>; panelRef: RefObject<HTMLDetailsElement | null>
 }) {
   const [fields, setFields] = useState<Field[]>(['name', 'dob', 'phone'])
   const [values, setValues] = useState(['', '', ''])
   const [idType, setIdType] = useState('ssn_last4')
   const [loadingDemo, setLoadingDemo] = useState(false)
   const [demoError, setDemoError] = useState('')
-  const panel = useRef<HTMLDetailsElement>(null)
-  return <details className="verification-form" ref={panel}>
-    <summary>Prefer a form? Verify with three details (optional)</summary>
+  return <details className="verification-form" ref={panelRef}>
+    <summary><ClipboardList size={17}/><span>Prefer a form?<small>Verify with three details · optional</small></span><ChevronDown size={14}/></summary>
+    <div className="verification-body">
     <p className="small">Chat works too. Choose three different fields; SSN is optional. All three must match one policyholder. Submitting replaces previously entered values for these fields.</p>
     <div className="verification-demo"><Button variant="outline" size="sm" disabled={disabled || loadingDemo} onClick={async () => {
       setLoadingDemo(true); setDemoError('')
@@ -39,7 +40,7 @@ export function IdentityVerification({ disabled, onSubmit }: {
       const submitted = fields.map((field, n) => ({ field, value: values[n].trim(), ...(field === 'id_last4' ? { identifier_type: idType } : {}) }))
       if (await onSubmit(submitted, submitted.map(({field,value}) => `${FIELDS[field][0]}: ${value}`).join('\n'))) {
         setValues(['', '', ''])
-        if (panel.current) panel.current.open = false
+        if (panelRef.current) panelRef.current.open = false
       }
     }}>
       <div className="verification-fields">{fields.map((field, n) => <div className="verification-row" key={n}>
@@ -56,5 +57,6 @@ export function IdentityVerification({ disabled, onSubmit }: {
       <p className="micro muted">Synthetic demo only. Don’t enter real personal information. Values are visible while editing and redacted in saved conversation views. Individual match results stay private.</p>
       <Button type="submit" size="sm" disabled={disabled || loadingDemo || values.some(value => !value.trim())}>Verify details</Button>
     </form>
+    </div>
   </details>
 }
