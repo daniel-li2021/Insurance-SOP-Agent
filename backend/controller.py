@@ -5,6 +5,7 @@ import uuid
 from datetime import datetime, timezone
 from .fixtures import Claim, Fixtures
 from .identity import DATE, extract_identity, merge_identity, normalize, representative_signal, supported, verify
+from .interpreter import human_requested
 from .models import Interpretation, Message, Session, Summary, SummaryCase
 
 AUTH_SECONDS = 900
@@ -24,9 +25,7 @@ class Controller:
 
     @staticmethod
     def wants_human(text: str) -> bool:
-        return bool(re.search(
-            r'\b(?:human|transfer me|no (?:more )?ai)\b|\b(?:stop|pause) (?:the |this )?(?:ai|chatbot|chat)\b|'
-            r'\b(?:don[’\']t|do not) want (?:to (?:talk|speak) to |the |any |this )?(?:ai|chatbot)\b', text, re.I))
+        return human_requested(text)
 
     def expire(self, s: Session, now: float):
         grant = s.grant or {}
@@ -45,6 +44,7 @@ class Controller:
             s.messages = [m for m in s.messages if not m.protected]
             s.discussed = []
             s.discussed_by_case = {}
+            s.exhausted_document_cases = []
             s.context_notes = []
             s.pending_topics = []
             s.pending_documents = []
@@ -137,6 +137,7 @@ class Controller:
                 s.messages = [m for m in s.messages if not m.protected]
                 s.discussed = []
                 s.discussed_by_case = {}
+                s.exhausted_document_cases = []
                 s.context_notes = []
                 s.pending_topics = []
                 s.pending_documents = []
@@ -265,12 +266,14 @@ class Controller:
             s.transition('RESOLVE_INTENT', now)
             return self.reply(s, prefix, 'This claim is unavailable in your authorized records. Please check the reference or ask member support.', now)
         s.case_status = claim.status
+        exhausted = i.alternatives_exhausted or s.pending_alternatives_exhausted
+        if exhausted and s.case_id not in s.exhausted_document_cases:
+            s.exhausted_document_cases.append(s.case_id)
         if i.action == 'wrap_up':
             return self.preview(s, claim, prefix, now)
         if text.strip().casefold() in ('yes', 'send', 'send it', 'skip'):
             return self.reply(s, prefix, 'To wrap up, choose “Review summary.” You can then explicitly choose Send simulated email or Skip. A chat message alone does not authorize sending.', now)
         topics = list(dict.fromkeys(requested_topics + s.pending_topics)) or ['status']
-        exhausted = i.alternatives_exhausted or s.pending_alternatives_exhausted
         body, refs = self.explain(claim, topics, now, exhausted,
                                   documents=i.documents or s.pending_documents,
                                   first=not s.discussed, detailed=i.detailed)
@@ -359,6 +362,8 @@ class Controller:
                 expired = bool(claim.appeal_deadline and claim.appeal_deadline < datetime.fromtimestamp(now, timezone.utc).date())
                 reason = ('Missing ' + ' and '.join('treating provider office note' if d == 'office note' else d for d in claim.documents_needed) + '.') if claim.denial_reason and claim.documents_needed else claim.denial_reason
                 next_steps = ('Ask the provider about replacement documents. Contact a human claims representative to confirm whether further review is possible.' if claim.documents_needed else 'Contact member support if you have questions about this recorded outcome.')
+                if claim.documents_needed and case_id in s.exhausted_document_cases:
+                    next_steps = 'You reported that document options were unavailable. Contact a human claims representative to review manual options and confirm whether further review is possible.'
                 cases.append(SummaryCase(case_id=claim.case_id, case_type=claim.case_type.capitalize(),
                     status=claim.status.capitalize(), denial_reason=reason,
                     payment=f'${claim.net_pay:,.2f}', allowed_maximum=f'${claim.allowed_max_amount:,.2f}',

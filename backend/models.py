@@ -110,6 +110,7 @@ class Session(StrictModel):
     unresolved: list[str] = Field(default_factory=list)
     discussed: list[str] = Field(default_factory=list)
     discussed_by_case: dict[str, list[str]] = Field(default_factory=dict)
+    exhausted_document_cases: list[str] = Field(default_factory=list)
     pending_topics: list[Topic] = Field(default_factory=list)
     pending_documents: list[str] = Field(default_factory=list)
     pending_alternatives_exhausted: bool = False
