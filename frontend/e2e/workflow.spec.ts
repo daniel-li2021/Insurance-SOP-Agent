@@ -12,6 +12,23 @@ async function verified(page: Page) {
   await expect(page.getByRole('button',{name:'Review summary',exact:true})).toBeVisible()
 }
 
+test('human representative request pauses self-service and resumes without changing caller role',async({page})=>{
+  await page.goto('/')
+  await verified(page)
+  await message(page,'I do not want a human. Please explain payment.')
+  await expect(page.getByRole('region',{name:'Human assistance recommended'})).toHaveCount(0)
+  await expect(page.locator('.inspector-panel')).toContainText('CL-2048')
+  await page.getByRole('textbox',{name:'Message ClaimFlow'}).fill('Please transfer me to a human representative.')
+  await page.getByRole('button',{name:'Send message',exact:true}).click()
+  await expect(page.getByRole('region',{name:'Human assistance recommended'})).toBeVisible()
+  await expect(page.getByRole('region',{name:'Representative Mode'})).toHaveCount(0)
+  await expect(page.locator('.inspector-panel')).toContainText('CL-2048')
+  await page.getByRole('button',{name:'Return to chatbot',exact:true}).click()
+  await message(page,'What is the payment?')
+  await expect(page.getByRole('button',{name:'Review summary',exact:true})).toBeVisible()
+  await expect(page.locator('.message-text').last()).toContainText('$0.00')
+})
+
 test('suggestions draft questions without sending or bypassing summary consent',async({page})=>{
   await page.setViewportSize({width:1440,height:900})
   await page.goto('/')

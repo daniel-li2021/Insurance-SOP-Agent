@@ -50,6 +50,20 @@ class ModelFailure(Exception):
     pass
 
 
+def human_requested(text: str) -> bool:
+    """Recognize bounded assistance requests, rather than mentions of a human."""
+    text = text.casefold().replace('’', "'")
+    target = r'(?:human(?: (?:claims |support )?(?:representative|agent))?|(?:real |live )?(?:person|agent)|(?:claims |support |customer service )?representative)'
+    # Remove a declined assistance option without hiding a later positive request.
+    text = re.sub(r"\b(?:do not|don't|dont|never|no longer|would not|wouldn't) (?:want|need|prefer|request|like)(?: to (?:talk|speak)(?: to| with)?)? (?:a |an |the |any )?" + target + r'\b', '', text)
+    text = re.sub(r"\b(?:do not|don't|dont|never) (?:transfer me|escalate)\b", '', text)
+    text = re.sub(r'\bno (?:human|agent|representative)\b', '', text)
+    return bool(
+        re.search(r"\b(?:transfer me|escalate|no (?:more )?ai)\b|\b(?:stop|pause) (?:the |this )?(?:ai|chatbot|chat)\b|\b(?:don't|do not) want (?:to (?:talk|speak) to |the |any |this )?(?:ai|chatbot)\b", text)
+        or re.search(r'\b(?:want|need|prefer|request|like|talk to|speak to|talk with|speak with|connect me to)\s+(?:(?:to )?(?:talk|speak) (?:to|with) )?(?:a |an |the |any )?' + target + r'\b', text)
+        or re.fullmatch(r'\s*(?:please\s+)?' + target + r'(?:\s+please)?[.!?\s]*', text))
+
+
 class LiveInterpreter:
     name: str
 
@@ -88,7 +102,7 @@ class ScriptedInterpreter:
     async def interpret(self, text: str, state: Session) -> tuple[Interpretation, dict]:
         s = text.casefold()
         out = Interpretation()
-        out.representative = representative_signal(text) or bool(re.search(r'\brepresentative\b', s))
+        out.representative = representative_signal(text)
         out.correction = bool(re.search(r'\b(actually|correction|correct|meant|sorry|instead|wrong)\b', s))
         out.identity = extract_identity(text, state, out.correction)
         if re.search(r'\b(health|medical|healthcare)\b', s): out.case_type = 'healthcare'
@@ -127,7 +141,7 @@ class ScriptedInterpreter:
                       else 'status_inquiry' if out.topics else 'none')
         if re.search(r'\b(rl|reinforcement learning|weather|recipe|write code|ignore.*instructions|system prompt)\b', s): out.intent = 'out_of_scope'
         if re.search(r'thank.*all|that.s all|done|summary|wrap up|finish', s): out.action = 'wrap_up'
-        if re.search(r'\b(human|agent|person|escalate)\b|\btransfer me\b', s): out.action = 'human'
+        if human_requested(text): out.action = 'human'
         if re.search(r'frustrat|ridiculous|angry|furious', s): out.emotion = 'frustrated'
         if re.search(r'worried|anxious|scared', s): out.emotion = 'anxious'
         if re.search(r'confus|don.t understand', s): out.emotion = 'confused'

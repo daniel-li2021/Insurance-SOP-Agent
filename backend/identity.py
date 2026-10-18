@@ -15,6 +15,10 @@ def representative_signal(text: str) -> bool:
     return bool(re.search(
         r'on behalf|my (?:mother|mom|father|dad|wife|husband|spouse|partner|daughter|son|sister|brother|aunt|uncle|grandmother|grandfather)\b|'
         r'her son|as (?:a |her )?representative|i.m david|'
+        r'\bi(?: am|[’\']m)\s+representing\b|'
+        r'\bi(?: am|[’\']m)\s+(?:(?:a|an)\s+)?(?:authorized\s+)?representative\b|'
+        r'\b(?:i(?: am|[’\']m)|as)\s+(?:the\s+)?(?:her|his|their|(?:policyholder|claimant|insured|patient)[’\']s)\s+'
+        r'(?:authorized\s+)?(?:representative|attorney|lawyer|guardian|caregiver|doctor|nurse)\b|'
         r'\b(?:helping|assisting|calling for) (?:my|a|the) (?:friend|client|patient)\b|'
         r'\b(?:her|his|their) (?:(?:full )?name\s*(?:is|:)|dob\b|date of birth\b)',
         text, re.I))
@@ -66,7 +70,9 @@ def extract_identity(text: str, state: Session, correction: bool = False) -> lis
         'email': r'[\w.+-]+@[\w.-]+\.[a-zA-Z]{2,}',
         'phone': PHONE,
         'policy_number': r'\bPOL-\d+\b',
-        'id_last4': r'(?:last\s*(?:four|4)(?:\s+digits)?|ssn|national[- ]?id)\s*(?:(?:is|are|:|ending(?:\s+in)?|ends in)\s*)?(\d{4})\b',
+        'id_last4': r'(?:(?:ssn|national[- ]?id)(?:[’\']s)?(?:\s+last\s*(?:four|4)(?:\s+digits)?)?|'
+                    r'last\s*(?:four|4)(?:\s+digits)?(?:\s+of\s+(?:my\s+)?(?:ssn|national[- ]?id))?)'
+                    r'\s*(?:(?:is|are|:|ending(?:\s+in)?|ends in)\s*)?(\d{4})\b',
         'name': rf"(?:(?i:my (?:full )?name is|(?:full )?name\s*(?:is|:))\s+({named})|\bI(?: am|[’']m)\s+({introduced})){boundary}",
         'dob': DATE,
     }
@@ -97,22 +103,34 @@ def supported(candidate: Candidate, text: str) -> bool:
 
 def merge_identity(state: Session, candidates: list[Candidate], text: str, message_id: str, correction: bool):
     # Multiple different values in one turn remain contradictory even on a correction turn.
+    literal = extract_identity(text, state, correction)
     by_field = {}
-    for c in candidates + extract_identity(text, state, correction):
+    for c in candidates + literal:
         if c.source.casefold() in text.casefold():
             by_field.setdefault(c.field, set()).add(normalize(c.field, c.source))
     blocked = {field for field, values in by_field.items()
                if len(values) > 1 or any(v.startswith('invalid-') for v in values)}
+    id_types = {c.identifier_type for c in candidates + literal
+                if c.field == 'id_last4' and c.identifier_type != 'unspecified' and supported(c, text)}
+    if len(id_types) > 1:
+        blocked.add('id_last4')
     for field in blocked:
         if field not in state.conflicts:
             state.conflicts.append(field)
     for c in candidates:
         if c.field in blocked or not supported(c, text):
             continue
+        if c.field == 'id_last4' and c.identifier_type == 'unspecified' and len(id_types) == 1:
+            # Explicit caller wording cannot be weakened by a model's omitted ID type.
+            c = c.model_copy(update={'identifier_type': next(iter(id_types))})
         if state.representative and c.subject == 'caller':
             continue
         old = state.identity.get(c.field)
-        different = old and normalize(c.field, old.value) != normalize(c.field, c.value)
+        if c.field == 'id_last4' and old and c.identifier_type == 'unspecified':
+            c = c.model_copy(update={'identifier_type': old.identifier_type})
+        different = old and (normalize(c.field, old.value) != normalize(c.field, c.value) or
+                             (c.field == 'id_last4' and old.identifier_type != 'unspecified' and
+                              c.identifier_type != 'unspecified' and old.identifier_type != c.identifier_type))
         if (different or c.field in state.conflicts) and not correction:
             if c.field not in state.conflicts:
                 state.conflicts.append(c.field)

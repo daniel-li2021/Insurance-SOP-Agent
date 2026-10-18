@@ -57,12 +57,12 @@ ClaimFlow keeps access and actions under deterministic control. The model interp
 | Session and failure recovery | Authorization expiry, stale responses after reset, conflicting requests, failed settings changes, and network retries. |
 | Inspectable behavior | Source references, decision history, and repeatable policy evaluations expose the reasoning enforced by the controller. |
 
-Recorded validation for this codebase:
+Recorded validation for the October 18, 2026 review:
 
-- **263/263 backend tests passed** in the unchanged backend baseline, including authorization, privacy, consent, provider contracts, and recovery.
+- **300/300 backend tests passed**, including 37 focused regressions for caller roles, explicit ID types, human-assistance recovery, and per-claim summary memory, alongside authorization, privacy, consent, and provider contracts.
 - **23/23 scripted policy scenarios passed**, using the same evaluator as the Lab. These overlap backend tests and are not an independent extra sample.
-- **37/37 Chromium journeys passed** for the Playground refresh. A later form-only revision passed **7/7 focused journeys** and the TypeScript/Vite build; it did not rerun the full suite.
-- An earlier **Linux/ARM64 Docker production-profile smoke** checked request protections, a complete simulated journey, duplicate Send handling, and encrypted session/receipt persistence across restart.
+- **38/38 Chromium journeys passed in one final isolated offline run**, including responsive Playground/Lab switching, preserved state/scroll, optional verification, recovery, and summary consent. The TypeScript/Vite production build passed.
+- A fresh **Linux/ARM64 Docker production-profile smoke** passed request protections, role/ID denials, human-assistance recovery, summary/Send deduplication, and encrypted session/receipt persistence across restart.
 
 These results support the tested synthetic workflow. They do not measure broad live-model conversational quality or production availability. See [validation evidence and limits](docs/VALIDATION.md) for the exact revisions, coverage, and historical live-model results.
 
