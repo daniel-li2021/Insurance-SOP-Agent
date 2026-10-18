@@ -1,10 +1,16 @@
 # ClaimFlow review and validation
 
+## Compact verification form follow-up — October 17, 2026
+
+The final form-only pass keeps the three-column desktop layout and mobile stack, moves synthetic autofill to the upper right, removes duplicate visible labels, and tightens control heights/spacing. Inputs retain accessible names, placeholders, format guidance, and validation attributes. **Clear** resets local input values only; it does not submit or change backend verification state. The existing Verify request and identity rules are unchanged.
+
+The production TypeScript/Vite build passed (`index-8Ki8Xtoj.js`). **7/7 focused offline Chromium journeys passed**: form mismatch/correction, SSN alternative, mobile form, synthetic autofill and Clear, transcript redaction, layout-mode draft preservation, and five-size layout/form bounds. This is a targeted follow-up to the earlier 37-journey run below, not a fresh full-suite or backend run. No model call or deployment was made. See the compact-form addendum in [visual QA](../design-qa.md) and [form controls](USAGE.md).
+
 ## Portfolio UI refresh — October 17, 2026
 
 Built from local `main` commit `999722b` on `codex/claimflow-portfolio-polish`. Changes are limited to Playground presentation, deterministic draft suggestions, browser regressions, screenshots, and documentation. Backend code, fixtures, API contracts, provider configuration, authorization, and summary actions are unchanged. No deployment or paid model call was made.
 
-- TypeScript/Vite production build passed; current JS asset: `index-CRUVKRpw.js`.
+- TypeScript/Vite production build passed; UI-refresh JS asset: `index-CRUVKRpw.js`.
 - **37/37 Chromium journeys passed in one isolated offline run**, including all 34 existing journeys and three added journeys. The new checks cover draft-only suggestions without turn/action/verification requests, state-specific prompts, explicit summary consent, paused assistance, scenario focus restoration, and preservation of chat/form drafts across layout modes.
 - Layout checks cover 1440×900, 1280×720, 390×844, 320×568, and 720×450. Expanded mode increases the message viewport by more than 40 CSS pixels at each size; scenario/form triggers and the composer remain in view. Open forms are bounded so the composer stays visible on short screens. Existing responsive navigation, privacy, expiry, stale-session, retry, Lab, and consent checks also passed.
 - The first browser attempt could not launch Chromium inside the filesystem sandbox; the successful runs used the installed Chromium outside that sandbox with temporary synthetic stores and offline mode. Intermediate assertions caught initial-session request capture, the expected disabled composer after a human request, and compact-layout/form overflow issues; those were corrected before the passing run.
