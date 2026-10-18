@@ -1,5 +1,9 @@
 # ClaimFlow review and validation
 
+## README presentation follow-up — October 17, 2026
+
+The README now leads with the claim-support workflow, shows three complementary existing captures (Playground, summary consent, and Evaluation Lab), and connects reliability controls to the recorded checks. It distinguishes the reused 263-test backend baseline, overlapping 23 policy scenarios, 37-journey UI run, and subsequent 7-journey form check. This documentation-only update adds no runtime, deployment, or live-model evidence; existing screenshots were visually inspected and local README links were checked.
+
 ## Compact verification form follow-up — October 17, 2026
 
 The final form-only pass keeps the three-column desktop layout and mobile stack, moves synthetic autofill to the upper right, removes duplicate visible labels, and tightens control heights/spacing. Inputs retain accessible names, placeholders, format guidance, and validation attributes. **Clear** resets local input values only; it does not submit or change backend verification state. The existing Verify request and identity rules are unchanged.
